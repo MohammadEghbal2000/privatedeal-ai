@@ -1,0 +1,24 @@
+{
+  "name": "my-agent",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "start:mock": "tsx src/index.ts --mock",
+    "start:offline": "tsx src/index.ts --mock --scripted --yes",
+    "eval": "tsx src/eval.ts",
+    "eval:mock": "tsx src/eval.ts --mock",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@kaleidorg/mind": "^0.11.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "@qvac/sdk": "^0.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

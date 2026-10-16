@@ -1,0 +1,30 @@
+
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# QVAC model files
+models/
+*.gguf
+
+# Private application state
+data/
+
+# Generated files
+*.log
+eval*.jsonl
+dist/
+frontend/dist/
+coverage/
+*.tsbuildinfo
+
+# Accidental files
+/echo
+/{
