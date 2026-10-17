@@ -148,6 +148,11 @@ export async function submitPreparedRgbMilestone(
       intent.amountPDAI
     );
 
+    // Require at least 10 minutes before expiry.
+    if (verified.expiresAt - Math.floor(Date.now() / 1000) <= 600) {
+      throw new Error("Invoice expires too soon; renewal required");
+    }
+
     if (
       verified.recipientId !==
       intent.recipientId
