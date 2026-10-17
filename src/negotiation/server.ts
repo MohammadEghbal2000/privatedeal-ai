@@ -271,6 +271,73 @@ const server = createServer(async (req, res) => {
     }
   }
 
+  // QVAC NEGOTIATION PREVIEW - NO PAYMENT
+  if (
+    req.method === "POST" &&
+    path === "/api/qvac/preview"
+  ) {
+    const contentType = req.headers["content-type"] ?? "";
+
+    if (!/^application\/json(?:;|$)/i.test(contentType)) {
+      return send(415, { error: "Expected JSON" });
+    }
+
+    try {
+      let body = "";
+
+      for await (const chunk of req) {
+        body += chunk.toString();
+
+        if (body.length > 2048) {
+          return send(413, { error: "Request too large" });
+        }
+      }
+
+      const data = JSON.parse(body);
+
+      if (
+        typeof data?.message !== "string" ||
+        !data.message.trim() ||
+        data.message.length > 500
+      ) {
+        return send(400, { error: "Invalid message" });
+      }
+
+      const { previewQvacNegotiation } =
+        await import("./qvacNegotiationPreview.js");
+
+
+      // Use the requested negotiation round (1 to 5).
+      const round = data.round ?? 3;
+
+      if (
+        !Number.isInteger(round) ||
+        round < 1 ||
+        round > totalRounds
+      ) {
+        return send(400, {
+          error: "Round must be between 1 and 5",
+        });
+      }
+
+      const preview = await previewQvacNegotiation(
+        data.message.trim(),
+        40,
+        100,
+        round
+      );
+
+      return send(200, {
+        round,
+        ...preview,
+      });
+
+    } catch (error) {
+      console.error("QVAC preview failed:", error);
+      return send(503, { error: "QVAC preview failed" });
+    }
+  }
+
   // REAL LOCAL QVAC TEST ENDPOINT
   // Read-only: does not change offers or approvals.
   if (
@@ -300,8 +367,32 @@ const server = createServer(async (req, res) => {
     }
   }
 
+
+  // REAL RGB BALANCES - READ ONLY
+  if (
+    req.method === "GET" &&
+    path === "/api/rgb/balances"
+  ) {
+    try {
+      const { getPDAIBalances } =
+        await import("./rgbClient.js");
+
+      const balances = await getPDAIBalances();
+
+      return send(200, {
+        mode: "real_rgb",
+        ...balances,
+      });
+    } catch (error) {
+      console.error("RGB balance error:", error);
+      return send(503, {
+        error: "RGB nodes unavailable",
+      });
+    }
+  }
+
   // PAYMENT PLAN - NO ACTUAL TRANSFER
-  
+
   // PAYMENT PLAN - NO ACTUAL TRANSFER
   if (
     req.method === "GET" &&

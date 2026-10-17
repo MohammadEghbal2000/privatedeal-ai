@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import QvacPanel from "./QvacPanel";
 import PaymentStatusPanel from "./PaymentStatusPanel";
+import RGBBalancesPanel from "./RGBBalancesPanel";
 
 
 // ============================================
@@ -172,6 +173,7 @@ function App() {
       )}
 <QvacPanel />
 <PaymentStatusPanel />
+<RGBBalancesPanel />
 
       {/* LOADING */}
       {!state ? (
