@@ -442,6 +442,103 @@ const server = createServer(async (req, res) => {
     });
   }
 
+
+  // REAL RGB STATUS: verified against Alice and Bob.
+  if (req.method === "GET" &&
+      path === "/api/payment/rgb/status") {
+    const agreement = getAgreement();
+    if (!agreement ||
+        !approvals.client ||
+        !approvals.freelancer) {
+      return send(403, { error: "Both approvals required" });
+    }
+
+    try {
+      const { existsSync, readFileSync } = await import("node:fs");
+      const recordId = createHash("sha256")
+        .update(JSON.stringify([agreement.id, 1]))
+        .digest("hex");
+      const file = `/workspaces/.privatedeal-rgb-payments/${recordId}.json`;
+
+      if (!existsSync(file)) {
+        return send(200, {
+          mode: "real_rgb", milestoneId: 1,
+          status: "not_prepared", settled: false
+        });
+      }
+
+      const intent = JSON.parse(readFileSync(file, "utf8")) as {
+        agreementId: string;
+        milestoneId: number;
+        amountPDAI: number;
+        recipientId: string;
+        status: string;
+        txid?: string;
+      };
+
+      if (intent.agreementId !== agreement.id ||
+          intent.milestoneId !== 1) {
+        return send(409, { error: "Payment record mismatch" });
+      }
+
+      const assetId =
+        "rgb:c7L6N5Oa-3VOzRHR-r_V8wpW-N3kl35E-1Nc8a4g-EZwQ9dQ";
+
+      const readTransfers = async (port: number) => {
+        const response = await fetch(
+          `http://127.0.0.1:${port}/listtransfers`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              asset_filter: { type: "Id", value: assetId }
+            }),
+            signal: AbortSignal.timeout(15000)
+          }
+        );
+        if (!response.ok) throw new Error("RGB node unavailable");
+        const data = await response.json() as {
+          transfers?: Array<{
+            kind: string;
+            status: string;
+            recipient_id: string | null;
+          }>
+        };
+        if (!Array.isArray(data.transfers)) {
+          throw new Error("Invalid transfer response");
+        }
+        return data.transfers.filter(
+          t => t.recipient_id === intent.recipientId
+        );
+      };
+
+      const [alice, bob] = await Promise.all([
+        readTransfers(3001), readTransfers(3002)
+      ]);
+
+      const aliceSend = alice.find(t => t.kind === "Send");
+      const bobReceive = bob.find(t => t.kind === "ReceiveWitness");
+
+      const settled =
+        Boolean(intent.txid) &&
+        aliceSend?.status === "Settled" &&
+        bobReceive?.status === "Settled";
+
+      return send(200, {
+        mode: "real_rgb",
+        milestoneId: 1,
+        amountPDAI: intent.amountPDAI,
+        status: settled ? "settled" : intent.status,
+        aliceStatus: aliceSend?.status ?? null,
+        bobStatus: bobReceive?.status ?? null,
+        txid: intent.txid ?? null,
+        settled
+      });
+    } catch (error) {
+      console.error("RGB status check failed:", error);
+      return send(503, { error: "Cannot verify RGB settlement" });
+    }
+  }
+
   // REAL RGB MILESTONE PREPARATION
   if (
     req.method === "POST" &&

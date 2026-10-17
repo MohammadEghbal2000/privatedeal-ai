@@ -1,112 +1,83 @@
+import { useCallback, useEffect, useState } from "react";
 
-import { useEffect, useState } from "react";
-
-type Milestone = {
-  id: number;
-  amount: number;
-  status: "mock_paid" | "not_paid";
-  receipt: {
-    result?: {
-      payment_hash?: string;
-    };
-  } | null;
-};
-
-type PaymentStatus = {
+type RGBStatus = {
   mode: string;
-  currency: string;
-  milestones: Milestone[];
+  milestoneId: number;
+  amountPDAI?: number;
+  status: string;
+  aliceStatus?: string | null;
+  bobStatus?: string | null;
+  txid?: string | null;
+  settled: boolean;
 };
 
 export default function PaymentStatusPanel() {
-  const [data, setData] = useState<PaymentStatus | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [payment, setPayment] = useState<RGBStatus | null>(null);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  async function refreshPayments() {
+  const refresh = useCallback(async () => {
     setLoading(true);
-    setError("");
-
     try {
-      const response = await fetch("/api/payment/status", {
-        cache: "no-store",
+      const response = await fetch("/api/payment/rgb/status", {
+        cache: "no-store"
       });
-
       if (!response.ok) {
         throw new Error(
           response.status === 403
-            ? "Both contract approvals are required"
-            : "Cannot fetch payment status"
+            ? "Both parties must approve the agreement"
+            : response.status === 404
+              ? "Restart backend to enable RGB status API"
+              : "Cannot verify RGB payment"
         );
       }
-
-      const result: PaymentStatus = await response.json();
-      setData(result);
-    } catch (err) {
-      setData(null);
-      setError(String(err));
+      const data = await response.json() as RGBStatus;
+      if (data.mode !== "real_rgb" ||
+          typeof data.settled !== "boolean") {
+        throw new Error("Unexpected RGB payment response");
+      }
+      setPayment(data);
+      setError("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
-  }
-
-  useEffect(() => {
-    void refreshPayments();
   }, []);
 
+  useEffect(() => {
+    void refresh();
+    const timer = setInterval(() => void refresh(), 12000);
+    return () => clearInterval(timer);
+  }, [refresh]);
+
   return (
-    <section
-      style={{
-        marginTop: 20,
-        padding: 20,
-        border: "1px solid #888",
-        borderRadius: 12,
-      }}
-    >
-      <h2>RGB Milestone Payments (Mock)</h2>
-
-      <button onClick={refreshPayments} disabled={loading}>
-        {loading ? "Loading..." : "Refresh Payment Status"}
+    <section style={{
+      marginTop: 20, padding: 20,
+      border: "1px solid #888", borderRadius: 12
+    }}>
+      <h2>Bitcoin Signet — Real RGB Payment</h2>
+      <p>Milestone #1 — PDAI demo asset</p>
+      <button onClick={() => void refresh()} disabled={loading}>
+        Refresh RGB Status
       </button>
-
-      {error && <p style={{ color: "red" }}>{error}</p>}
-
-      {data && (
+      {error && <p role="alert" style={{ color: "#ff6666" }}>{error}</p>}
+      {payment && (
         <div>
-          <p>Mode: {data.mode}</p>
-
-          {data.milestones.map((m) => (
-            <article
-              key={m.id}
-              style={{
-                padding: 15,
-                marginTop: 12,
-                border: "1px solid #777",
-                borderRadius: 8,
-              }}
-            >
-              <h3>Milestone {m.id}</h3>
-
-              <p>
-                Amount: {m.amount} {data.currency}
-              </p>
-
-              <p>
-                Status:{" "}
-                <strong>
-                  {m.status === "mock_paid"
-                    ? "Mock Paid"
-                    : "Not Paid"}
-                </strong>
-              </p>
-
-              {m.receipt?.result?.payment_hash && (
-                <p>
-                  Receipt: {m.receipt.result.payment_hash}
-                </p>
-              )}
-            </article>
-          ))}
+          <p>Amount: {payment.amountPDAI ?? "—"} PDAI</p>
+          <p>Payment status: <strong>{payment.status}</strong></p>
+          <p>Alice: {payment.aliceStatus ?? "No send detected"}</p>
+          <p>Bob: {payment.bobStatus ?? "No receipt detected"}</p>
+          <p>
+            Settlement: <strong>
+              {payment.settled && payment.txid
+                ? "✅ Settled on RGB"
+                : "⏳ Not settled"}
+            </strong>
+          </p>
+          {payment.txid && <p style={{ overflowWrap: "anywhere" }}>
+            Transaction ID: <code>{payment.txid}</code>
+          </p>}
         </div>
       )}
     </section>
