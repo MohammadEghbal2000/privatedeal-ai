@@ -606,6 +606,90 @@ const server = createServer(async (req, res) => {
     }
   }
 
+  // REAL RGB MILESTONE SUBMISSION
+  if (
+    req.method === "POST" &&
+    path === "/api/payment/rgb/submit"
+  ) {
+    if (identifyRole(req.headers.authorization) !== "client") {
+      return send(401, { error: "Client authorization required" });
+    }
+
+    const agreement = getAgreement();
+    if (!agreement || !approvals.client || !approvals.freelancer) {
+      return send(403, { error: "Both approvals required" });
+    }
+
+    // Disabled by default. No real send without explicit enablement.
+    if (process.env.ENABLE_REAL_PDAI_SEND !== "YES") {
+      return send(503, { error: "Real RGB sending is disabled" });
+    }
+
+    const contentType = req.headers["content-type"] ?? "";
+    if (contentType.split(";")[0]?.trim().toLowerCase() !== "application/json") {
+      return send(415, { error: "Expected JSON" });
+    }
+
+    let raw = "";
+    for await (const chunk of req) {
+      raw += chunk.toString();
+      if (raw.length > 2048) {
+        return send(413, { error: "Request too large" });
+      }
+    }
+
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      return send(400, { error: "Invalid JSON" });
+    }
+
+    if (
+      data?.agreementId !== agreement.id ||
+      data?.milestoneId !== 1 ||
+      data?.confirm !== "AUTHORIZE_REAL_PDAI_PAYMENT" ||
+      agreement.currency !== "DEMO_USDT"
+    ) {
+      return send(400, { error: "Invalid real RGB submission" });
+    }
+
+    try {
+      const { getMockMilestoneReceipt } =
+        await import("./mockSettlement.js");
+
+      if (await getMockMilestoneReceipt(agreement.id, 1)) {
+        return send(409, { error: "Milestone already mock-paid" });
+      }
+
+      const { submitPreparedRgbMilestone } =
+        await import("./realRgbSender.js");
+
+      const expectedAmountPDAI =
+        Math.floor(Math.round(agreement.price * 100) / 2) / 100;
+
+      const result = await submitPreparedRgbMilestone(
+        agreement.id,
+        1,
+        data.confirm,
+        expectedAmountPDAI
+      );
+
+      return send(202, {
+        mode: "real_rgb",
+        milestoneId: 1,
+        amountPDAI: 35,
+        settled: false,
+        ...result,
+      });
+    } catch (error) {
+      console.error("RGB submit requires inspection:", error);
+      return send(409, {
+        error: "Inspect payment intent and both nodes before retrying",
+      });
+    }
+  }
+
   // MOCK MILESTONE PAYMENT
   // Requires an approved contract and an explicit client request.
   if (

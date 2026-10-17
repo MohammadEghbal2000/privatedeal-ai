@@ -103,7 +103,8 @@ async function listTransfers(port: number) {
 export async function submitPreparedRgbMilestone(
   agreementId: string,
   milestoneId: 1 | 2,
-  confirmation: string
+  confirmation: string,
+  expectedAmountPDAI: number
 ) {
   if (
     confirmation !==
@@ -131,7 +132,10 @@ export async function submitPreparedRgbMilestone(
     if (
       intent.status !== "prepared" ||
       intent.agreementId !== agreementId ||
-      intent.milestoneId !== milestoneId
+      intent.milestoneId !== milestoneId ||
+      !Number.isSafeInteger(expectedAmountPDAI) ||
+      expectedAmountPDAI <= 0 ||
+      intent.amountPDAI !== expectedAmountPDAI
     ) {
       throw new Error(
         "Payment not prepared or already attempted"
