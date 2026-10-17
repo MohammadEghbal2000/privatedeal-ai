@@ -189,7 +189,14 @@ export async function submitPreparedRgbMilestone(
       aliceTransfers.some(
         t =>
           t.kind === "Send" &&
-          t.recipient_id === intent.recipientId
+          (
+              t.recipient_id === intent.recipientId ||
+              (
+                "previousRecipientId" in intent &&
+                typeof intent.previousRecipientId === "string" &&
+                t.recipient_id === intent.previousRecipientId
+              )
+            )
       )
     ) {
       persist(path, {
