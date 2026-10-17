@@ -19,11 +19,11 @@ export async function previewQvacNegotiation(
   const verified =
     prices.length === 1 &&
     signal.quotedPrice !== null &&
-    Math.abs(signal.quotedPrice - prices[0]) < 0.01;
+    Math.abs(signal.quotedPrice - (prices[0] ?? Number.NaN)) < 0.01;
 
   // Demo policy: aim 10% below the verified asking price.
   const target = verified
-    ? Math.min(limit, Math.max(start, prices[0] * 0.9))
+    ? Math.min(limit, Math.max(start, (prices[0] ?? Number.NaN) * 0.9))
     : limit;
 
   const clientOffer = calculateOffer({
