@@ -11,6 +11,7 @@ import {
 import { createHash, randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { validatePDAIInvoice } from "./rgbSettlement.js";
+import { rgbHistoricalRecipients } from "./rgbPaymentHistory.js";
 
 const DIR = "/workspaces/.privatedeal-rgb-payments";
 
@@ -150,9 +151,13 @@ export async function renewRgbMilestone(
       // to the old invoice recipient.
       const alice = await transfers(3001);
 
+      const historicalRecipients = rgbHistoricalRecipients(
+        path, agreementId, milestoneId, expectedAmountPDAI
+      );
+
       if (alice.some(t =>
         t.kind === "Send" &&
-        t.recipient_id === old.recipientId
+        historicalRecipients.has(t.recipient_id ?? "")
       )) {
         throw new Error(
           "Previous Alice send detected; stop and reconcile"

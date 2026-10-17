@@ -539,6 +539,93 @@ const server = createServer(async (req, res) => {
     }
   }
 
+
+  // RENEW REAL RGB INVOICE - NO PAYMENT IS SENT.
+  if (
+    req.method === "POST" &&
+    path === "/api/payment/rgb/renew"
+  ) {
+    if (identifyRole(req.headers.authorization) !== "client") {
+      return send(401, { error: "Client authorization required" });
+    }
+
+    const agreement = getAgreement();
+    if (!agreement || !approvals.client || !approvals.freelancer) {
+      return send(403, { error: "Both approvals required" });
+    }
+
+    if (agreement.currency !== "DEMO_USDT") {
+      return send(400, { error: "Unsupported currency" });
+    }
+
+    const contentType = req.headers["content-type"] ?? "";
+    if ((contentType.split(";")[0] ?? "").trim().toLowerCase() !== "application/json") {
+      return send(415, { error: "Expected JSON" });
+    }
+
+    let raw = "";
+    for await (const chunk of req) {
+      raw += chunk.toString();
+      if (raw.length > 2048) {
+        return send(413, { error: "Request too large" });
+      }
+    }
+
+    let data: {
+      agreementId?: string;
+      milestoneId?: number;
+      confirm?: string;
+    };
+
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      return send(400, { error: "Invalid JSON" });
+    }
+
+    if (
+      data?.agreementId !== agreement.id ||
+      data?.milestoneId !== 1 ||
+      data?.confirm !== "RENEW_REAL_PDAI_INVOICE"
+    ) {
+      return send(400, { error: "Invalid renewal authorization" });
+    }
+
+    const amountPDAI =
+      Math.floor(Math.round(agreement.price * 100) / 2) / 100;
+
+    if (!Number.isSafeInteger(amountPDAI) || amountPDAI <= 0) {
+      return send(400, { error: "Invalid milestone amount" });
+    }
+
+    try {
+      const { getMockMilestoneReceipt } =
+        await import("./mockSettlement.js");
+
+      if (await getMockMilestoneReceipt(agreement.id, 1)) {
+        return send(409, { error: "Milestone already mock-paid" });
+      }
+
+      const { renewRgbMilestone } =
+        await import("./realRgbRenewal.js");
+
+      const result = await renewRgbMilestone(
+        agreement.id, 1, amountPDAI
+      );
+
+      return send(200, {
+        mode: "real_rgb",
+        milestoneId: 1,
+        ...result
+      });
+    } catch (error) {
+      console.error("RGB renewal blocked:", error);
+      return send(409, {
+        error: "Renewal blocked; inspect payment history and nodes"
+      });
+    }
+  }
+
   // REAL RGB MILESTONE PREPARATION
   if (
     req.method === "POST" &&

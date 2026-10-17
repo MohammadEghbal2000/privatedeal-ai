@@ -12,6 +12,7 @@ import {
 import { createHash, randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { validatePDAIInvoice } from "./rgbSettlement.js";
+import { rgbHistoricalRecipients } from "./rgbPaymentHistory.js";
 
 const ASSET_ID =
   "rgb:c7L6N5Oa-3VOzRHR-r_V8wpW-N3kl35E-1Nc8a4g-EZwQ9dQ";
@@ -185,20 +186,14 @@ export async function submitPreparedRgbMilestone(
     const aliceTransfers =
       await listTransfers(3001);
 
-    if (
-      aliceTransfers.some(
-        t =>
-          t.kind === "Send" &&
-          (
-              t.recipient_id === intent.recipientId ||
-              (
-                "previousRecipientId" in intent &&
-                typeof intent.previousRecipientId === "string" &&
-                t.recipient_id === intent.previousRecipientId
-              )
-            )
-      )
-    ) {
+    const historicalRecipients = rgbHistoricalRecipients(
+      path, agreementId, milestoneId, expectedAmountPDAI
+    );
+
+    if (aliceTransfers.some(t =>
+      t.kind === "Send" &&
+      historicalRecipients.has(t.recipient_id ?? "")
+    )) {
       persist(path, {
         ...intent,
         status: "needs_reconciliation",
