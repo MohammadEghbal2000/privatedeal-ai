@@ -6,6 +6,7 @@ import {
   fsyncSync,
   closeSync,
   readFileSync,
+  unlinkSync,
 } from "node:fs";
 
 import { join } from "node:path";
@@ -79,8 +80,25 @@ export async function prepareRealRgbMilestone(input: {
       readFileSync(recordPath, "utf8")
     ) as PaymentIntent;
 
-    if (existing.amountPDAI !== amountPDAI) {
-      throw new Error("Milestone amount changed");
+    if (
+      existing.agreementId !== agreementId ||
+      existing.milestoneId !== milestoneId ||
+      existing.amountPDAI !== amountPDAI ||
+      existing.invoice !== bobInvoice ||
+      existing.status !== "prepared"
+    ) {
+      throw new Error(
+        "Existing RGB intent differs; reconcile before retry"
+      );
+    }
+
+    const checked = await validatePDAIInvoice(
+      existing.invoice,
+      amountPDAI
+    );
+
+    if (checked.recipientId !== existing.recipientId) {
+      throw new Error("Stored recipient mismatch");
     }
 
     return existing;
@@ -136,4 +154,47 @@ export async function prepareRealRgbMilestone(input: {
   }
 
   return intent;
+}
+
+export function hasRealRgbMilestoneIntent(
+  agreementId: string,
+  milestoneId: MilestoneId
+): boolean {
+  try {
+    readFileSync(getRecordPath(agreementId, milestoneId));
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  }
+}
+
+export async function withRealRgbPreparationLock<T>(
+  agreementId: string,
+  milestoneId: MilestoneId,
+  action: () => Promise<T>
+): Promise<T> {
+  mkdirSync(STORE_DIR, { recursive: true, mode: 0o700 });
+
+  const lockPath =
+    getRecordPath(agreementId, milestoneId) + ".preparelock";
+
+  let fd: number;
+
+  try {
+    fd = openSync(lockPath, "wx", 0o600);
+  } catch (error) {
+    throw new Error(
+      "RGB preparation locked; inspect previous attempt"
+    );
+  }
+
+  try {
+    return await action();
+  } finally {
+    closeSync(fd);
+    unlinkSync(lockPath);
+  }
 }

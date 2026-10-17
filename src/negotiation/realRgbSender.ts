@@ -218,6 +218,9 @@ export async function submitPreparedRgbMilestone(
                 {
                   recipient_id:
                     intent.recipientId,
+                  witness_data: {
+                    amount_sat: 1000,
+                  },
                   assignment: {
                     type: "Fungible",
                     value: intent.amountPDAI,

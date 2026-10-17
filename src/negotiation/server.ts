@@ -442,6 +442,170 @@ const server = createServer(async (req, res) => {
     });
   }
 
+  // REAL RGB MILESTONE PREPARATION
+  if (
+    req.method === "POST" &&
+    path === "/api/payment/rgb/prepare"
+  ) {
+    if (identifyRole(req.headers.authorization) !== "client") {
+      return send(401, { error: "Client authorization required" });
+    }
+
+    const agreement = getAgreement();
+
+    if (!agreement || !approvals.client || !approvals.freelancer) {
+      return send(403, { error: "Both approvals required" });
+    }
+
+    const contentType = req.headers["content-type"] ?? "";
+    if (!/^application\/json(?:;|$)/i.test(contentType)) {
+      return send(415, { error: "Expected JSON" });
+    }
+
+    let raw = "";
+    for await (const chunk of req) {
+      raw += chunk.toString();
+      if (raw.length > 2048) {
+        return send(413, { error: "Request too large" });
+      }
+    }
+
+    let data: {
+      agreementId?: string;
+      milestoneId?: number;
+      confirm?: string;
+    };
+
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      return send(400, { error: "Invalid JSON" });
+    }
+
+    if (
+      data?.agreementId !== agreement.id ||
+      data?.milestoneId !== 1 ||
+      data?.confirm !== "PREPARE_REAL_PDAI_PAYMENT"
+    ) {
+      return send(400, {
+        error: "Invalid agreement, milestone or confirmation",
+      });
+    }
+
+    // Explicit demo mapping, NOT a real exchange rate.
+    if (agreement.currency !== "DEMO_USDT") {
+      return send(400, { error: "Unsupported demo currency" });
+    }
+
+    const amountPDAI =
+      Math.floor(Math.round(agreement.price * 100) / 2) / 100;
+
+    if (!Number.isSafeInteger(amountPDAI) || amountPDAI <= 0) {
+      return send(400, { error: "Invalid PDAI amount" });
+    }
+
+    try {
+      const { getMockMilestoneReceipt } =
+        await import("./mockSettlement.js");
+
+      if (await getMockMilestoneReceipt(agreement.id, 1)) {
+        return send(409, { error: "Milestone already mock-paid" });
+      }
+
+      const {
+        withRealRgbPreparationLock,
+        hasRealRgbMilestoneIntent,
+        prepareRealRgbMilestone,
+      } = await import("./realRgbSettlement.js");
+
+      const result = await withRealRgbPreparationLock(
+        agreement.id,
+        1,
+        async () => {
+          if (hasRealRgbMilestoneIntent(agreement.id, 1)) {
+            return {
+              code: 409,
+              body: { error: "Existing RGB intent; reconcile first" },
+            };
+          }
+
+          const assetId =
+            "rgb:c7L6N5Oa-3VOzRHR-r_V8wpW-N3kl35E-1Nc8a4g-EZwQ9dQ";
+
+          const response = await fetch(
+            "http://127.0.0.1:3002/rgbinvoice",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                min_confirmations: 1,
+                asset_id: assetId,
+                assignment: {
+                  type: "Fungible",
+                  value: amountPDAI,
+                },
+                expiration_timestamp:
+                  Math.floor(Date.now() / 1000) + 3600,
+                witness: true,
+                transport_endpoints: [
+                  "rpcs://proxy.iriswallet.com/0.2/json-rpc",
+                ],
+              }),
+              signal: AbortSignal.timeout(30000),
+            }
+          );
+
+          if (!response.ok) {
+            throw new Error("Bob invoice request failed");
+          }
+
+          const bob = await response.json() as {
+            invoice?: string;
+            recipient_id?: string;
+          };
+
+          if (
+            typeof bob.invoice !== "string" ||
+            typeof bob.recipient_id !== "string"
+          ) {
+            throw new Error("Invalid Bob invoice response");
+          }
+
+          const intent = await prepareRealRgbMilestone({
+            agreementId: agreement.id,
+            milestoneId: 1,
+            amountPDAI,
+            bobInvoice: bob.invoice,
+          });
+
+          if (intent.recipientId !== bob.recipient_id) {
+            throw new Error("Bob recipient mismatch");
+          }
+
+          return {
+            code: 200,
+            body: {
+              mode: "real_rgb_preparation",
+              agreementId: agreement.id,
+              milestoneId: 1,
+              amountPDAI,
+              status: intent.status,
+              recipientId: intent.recipientId,
+              paymentSent: false,
+            },
+          };
+        }
+      );
+
+      return send(result.code, result.body);
+    } catch (error) {
+      console.error("RGB preparation failed:", error);
+      return send(503, {
+        error: "Preparation failed; inspect existing intent before retry",
+      });
+    }
+  }
+
   // MOCK MILESTONE PAYMENT
   // Requires an approved contract and an explicit client request.
   if (
