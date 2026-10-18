@@ -1,0 +1,246 @@
+.dgv-stage {
+  overflow: hidden;
+  border: 1px solid rgba(177, 125, 255, .32);
+  border-radius: 19px;
+  background:
+    radial-gradient(ellipse at 48% 49%, rgba(151, 77, 221, .18), transparent 64%),
+    linear-gradient(145deg, #171329, #10162A);
+  box-shadow: inset 0 0 35px rgba(166, 102, 255, .04);
+}
+
+.dgv-topline,
+.dgv-bottomline {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 16px;
+  color: #B7A3D7;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .7px;
+}
+
+.dgv-topline {
+  border-bottom: 1px solid rgba(177, 125, 255, .12);
+}
+
+.dgv-bottomline {
+  border-top: 1px solid rgba(177, 125, 255, .12);
+  flex-wrap: wrap;
+}
+
+.dgv-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #D9BBFF;
+}
+
+.dgv-led {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #A78BFA;
+  box-shadow: 0 0 9px #A78BFA;
+}
+
+.dgv-verified .dgv-led {
+  background: #8FC5FF;
+  box-shadow: 0 0 12px #8FC5FF;
+}
+
+.dgv-error .dgv-led {
+  background: #F19AAD;
+  box-shadow: 0 0 9px #F19AAD;
+}
+
+.dgv-canvas {
+  overflow-x: auto;
+}
+
+.dgv-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-width: 480px;
+  font-family: Inter, system-ui, sans-serif;
+}
+
+.dgv-wires path {
+  fill: none;
+  stroke: url(#dgvGradient);
+  stroke-width: 2;
+  opacity: .25;
+}
+
+.dgv-energy path {
+  fill: none;
+  stroke: url(#dgvGradient);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 7 12;
+  opacity: .24;
+}
+
+.dgv-ready .dgv-energy path {
+  opacity: .96;
+  animation: dgvTravel 1.5s linear infinite;
+  filter: drop-shadow(0 0 5px #D99AFF);
+}
+
+.dgv-particle {
+  fill: #F4E7FF;
+  filter: drop-shadow(0 0 7px #C892FF);
+}
+
+.dgv-pink {
+  fill: #FFABDE;
+}
+
+.dgv-blue {
+  fill: #9ACFFF;
+}
+
+.dgv-source {
+  fill: #29203F;
+  stroke: #9672CD;
+  stroke-width: 1.3;
+}
+
+.dgv-target-a {
+  fill: #36243F;
+  stroke: #D28FCD;
+  stroke-width: 1.3;
+}
+
+.dgv-target-b {
+  fill: #172943;
+  stroke: #77ADFA;
+  stroke-width: 1.3;
+}
+
+.dgv-core {
+  fill: url(#dgvCoreGradient);
+  stroke: #C88EFF;
+  stroke-width: 1.8;
+  filter: drop-shadow(0 0 12px rgba(185, 122, 255, .36));
+}
+
+.dgv-halo {
+  fill: none;
+  stroke: #C19BFF;
+  stroke-opacity: .22;
+}
+
+.dgv-orbit {
+  fill: none;
+  stroke: #C99BFF;
+  stroke-width: 1.6;
+  stroke-dasharray: 5 10;
+  animation: dgvOrbit 15s linear infinite;
+}
+
+.dgv-core-inner {
+  fill: none;
+  stroke: #E99CDE;
+  stroke-opacity: .3;
+}
+
+.dgv-verified .dgv-core {
+  stroke: #98CAFF;
+  stroke-width: 2.5;
+}
+
+.dgv-label {
+  fill: #DCC1F1;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.dgv-blue-label {
+  fill: #A8D6FF;
+}
+
+.dgv-value {
+  fill: #FFFFFF;
+  font-size: 29px;
+  font-weight: 850;
+  letter-spacing: -1px;
+}
+
+.dgv-caption,
+.dgv-footer {
+  fill: #B4A5CF;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .8px;
+}
+
+.dgv-symbol {
+  fill: #EAACFF;
+  font-size: 19px;
+}
+
+.dgv-core-label {
+  fill: #FFF4FF;
+  font-size: 27px;
+  font-weight: 900;
+  letter-spacing: 4px;
+}
+
+@keyframes dgvTravel {
+  to {
+    stroke-dashoffset: -76;
+  }
+}
+
+@keyframes dgvOrbit {
+  to {
+    stroke-dashoffset: -150;
+  }
+}
+
+@media (max-width: 680px) {
+  .dgv-topline,
+  .dgv-bottomline {
+    padding: 11px;
+    font-size: 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dgv-energy path,
+  .dgv-orbit {
+    animation: none;
+  }
+
+  .dgv-particle {
+    display: none;
+  }
+}
+
+
+.dgv-input-rail {
+  fill: none;
+  stroke: #B999FF;
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  opacity: .85;
+  filter: drop-shadow(0 0 5px rgba(190, 145, 255, .8));
+}
+
+.dgv-ready .dgv-input-rail {
+  stroke: #E4BBFF;
+  stroke-width: 4;
+  opacity: 1;
+  filter: drop-shadow(0 0 8px rgba(211, 151, 255, .95));
+}
+
+.dgv-label {
+  font-size: 11px;
+}
+
+.dgv-caption {
+  font-size: 9px;
+}

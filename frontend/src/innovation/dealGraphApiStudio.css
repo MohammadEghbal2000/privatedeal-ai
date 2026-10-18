@@ -1,0 +1,470 @@
+.dgstudio {
+  margin: 0 0 24px;
+  padding: 28px;
+  border: 1px solid #4b356d;
+  border-radius: 24px;
+  background:
+    radial-gradient(ellipse at 85% 5%, #603a9d33, transparent 40%),
+    linear-gradient(125deg, #131023, #090e1e 70%);
+  color: #f4efff;
+  box-shadow: 0 24px 70px #00000033;
+}
+
+.dgstudio * {
+  box-sizing: border-box;
+}
+
+.dgstudio-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  margin-bottom: 25px;
+}
+
+.dgstudio-kicker {
+  color: #c69aff;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 2px;
+}
+
+.dgstudio-heading h3 {
+  margin: 12px 0;
+  font-size: clamp(23px, 3vw, 35px);
+  letter-spacing: -1.4px;
+}
+
+.dgstudio-heading h3 em {
+  font-style: normal;
+  color: #e89bff;
+}
+
+.dgstudio-heading p {
+  margin: 0;
+  color: #a99ebf;
+  font-size: 12px;
+  line-height: 1.7;
+  max-width: 460px;
+}
+
+.dgstudio-mode {
+  flex-shrink: 0;
+  padding: 10px 13px;
+  border: 1px solid #f7af8c55;
+  border-radius: 100px;
+  background: #ff956a12;
+  color: #ffc29c;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.dgstudio-layout {
+  display: grid;
+  grid-template-columns: 0.95fr 1.05fr;
+  gap: 18px;
+}
+
+.dgstudio-editor,
+.dgstudio-result {
+  min-width: 0;
+  padding: 24px;
+  border: 1px solid #403658;
+  border-radius: 18px;
+  background: #151327cc;
+}
+
+.dgstudio-result {
+  background:
+    radial-gradient(circle at 50% 35%, #53318d35, transparent 57%),
+    #111126;
+}
+
+.dgstudio-editor-title {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 20px;
+  color: #c8b5e9;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.3px;
+}
+
+.dgstudio-editor-title > span {
+  color: #f2a0f7;
+  font-size: 19px;
+}
+
+.dgstudio label {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+  color: #a9a0c4;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.dgstudio input {
+  min-width: 0;
+  width: 100%;
+  padding: 12px 13px;
+  border: 1px solid #47405f;
+  border-radius: 10px;
+  outline: none;
+  background: #0d1020;
+  color: #f5efff;
+  font: inherit;
+  font-size: 13px;
+  transition: border-color 180ms ease;
+}
+
+.dgstudio input:focus {
+  border-color: #b48bff;
+}
+
+.dgstudio-receiver {
+  padding: 16px;
+  margin-top: 12px;
+  border: 1px solid #44355f;
+  border-radius: 14px;
+  background: #a986ff0a;
+}
+
+.dgstudio-receiver:nth-of-type(3) {
+  border-color: #365574;
+  background: #67c8ff09;
+}
+
+.dgstudio-receiver-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 15px;
+  font-size: 12px;
+}
+
+.dgstudio-index {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  background: #9b6aff33;
+  color: #d2b6ff;
+}
+
+.dgstudio-index-blue {
+  background: #64c7ff24;
+  color: #89d7ff;
+}
+
+.dgstudio-receiver label:last-child {
+  margin-bottom: 0;
+}
+
+.dgstudio-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 20px;
+}
+
+.dgstudio-actions button {
+  min-height: 43px;
+  padding: 11px 15px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.dgstudio-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dgstudio-primary {
+  border: 0;
+  color: #1b1032;
+  background: linear-gradient(110deg, #e4b5ff, #a695ff);
+}
+
+.dgstudio-secondary {
+  border: 1px solid #785d9d;
+  background: #241c39;
+  color: #e8d7ff;
+}
+
+.dgstudio-network {
+  position: relative;
+  height: 240px;
+  margin-bottom: 17px;
+  overflow: hidden;
+  border: 1px solid #44346166;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 38% 50%, #7e47ca30, transparent 50%),
+    repeating-linear-gradient(0deg, transparent 0 27px, #a58bff0c 28px),
+    repeating-linear-gradient(90deg, transparent 0 27px, #a58bff0c 28px);
+}
+
+.dgstudio-core {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  left: 31%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 2px;
+  width: 125px;
+  height: 125px;
+  border: 2px solid #b88bff;
+  border-radius: 50%;
+  background: radial-gradient(circle, #51347e, #18152f);
+  box-shadow: 0 0 65px #a766ff55;
+}
+
+.dgstudio-core > span {
+  color: #f0b0ff;
+  font-size: 22px;
+}
+
+.dgstudio-core strong {
+  color: #fff;
+  font-size: 24px;
+  letter-spacing: 3px;
+}
+
+.dgstudio-core small {
+  color: #b9a1db;
+  font-size: 8px;
+  letter-spacing: 2px;
+}
+
+.dgstudio-beam {
+  position: absolute;
+  left: 40%;
+  width: 43%;
+  height: 2px;
+  background: linear-gradient(90deg, #ab75ff, #ee83da, #64caff);
+  opacity: 0.85;
+  transform-origin: left;
+}
+
+.dgstudio-beam-one {
+  top: 50%;
+  transform: rotate(-24deg);
+}
+
+.dgstudio-beam-two {
+  top: 50%;
+  transform: rotate(24deg);
+}
+
+.dgstudio-target {
+  position: absolute;
+  z-index: 2;
+  right: 7%;
+  display: grid;
+  gap: 7px;
+  width: 90px;
+  padding: 13px;
+  border: 1px solid #ad6cba;
+  border-radius: 13px;
+  background: #30203e;
+}
+
+.dgstudio-target-a {
+  top: 15%;
+}
+
+.dgstudio-target-b {
+  bottom: 15%;
+  border-color: #5889c0;
+  background: #182b44;
+}
+
+.dgstudio-target small {
+  color: #ceafd8;
+  font-size: 9px;
+}
+
+.dgstudio-target strong {
+  font-size: 25px;
+}
+
+.dgstudio-data {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.dgstudio-data > div {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid #494061;
+  border-radius: 12px;
+  background: #211b37;
+}
+
+.dgstudio-data small {
+  color: #9d92b8;
+  font-size: 9px;
+  letter-spacing: 1px;
+}
+
+.dgstudio-data strong {
+  color: #fff;
+  font-size: 25px;
+}
+
+.dgstudio-hash {
+  display: grid;
+  gap: 11px;
+  margin-top: 14px;
+  padding: 17px;
+  border: 1px solid #494061;
+  border-radius: 12px;
+  background: #0c1121;
+}
+
+.dgstudio-hash > span {
+  color: #ab9bcc;
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+
+.dgstudio-hash code {
+  color: #b9b2ff;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.dgstudio-feedback {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-top: 14px;
+  padding: 15px;
+  border: 1px solid #6c5784;
+  border-radius: 12px;
+  background: #37264b55;
+}
+
+.dgstudio-feedback > span {
+  color: #b68bff;
+  font-size: 23px;
+}
+
+.dgstudio-feedback > div {
+  display: grid;
+  gap: 5px;
+}
+
+.dgstudio-feedback strong {
+  color: #e4d1ff;
+  font-size: 11px;
+}
+
+.dgstudio-feedback small {
+  color: #a99dbd;
+  font-size: 10px;
+}
+
+.dgstudio-feedback-verified {
+  border-color: #598dc1;
+  background: #27518022;
+}
+
+.dgstudio-feedback-verified strong {
+  color: #8cd5ff;
+}
+
+.dgstudio-error {
+  padding: 12px;
+  border-radius: 10px;
+  background: #ff658a17;
+  color: #ffb2c7;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.dgstudio-footer {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+  color: #9184ac;
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 1px;
+}
+
+@media (max-width: 1100px) {
+  .dgstudio-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 650px) {
+  .dgstudio {
+    padding: 15px;
+  }
+
+  .dgstudio-heading {
+    flex-direction: column;
+  }
+
+  .dgstudio-editor,
+  .dgstudio-result {
+    padding: 15px;
+  }
+}
+
+
+.dgstudio-network-legend {
+  position: absolute;
+  z-index: 4;
+  bottom: 12px;
+  left: 14px;
+  color: #a99abe;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.dgstudio-network-ready .dgstudio-core {
+  border-color: #c594ff;
+  box-shadow:
+    0 0 45px #ae75ff66,
+    0 0 100px #7b45ff22;
+}
+
+.dgstudio-network-ready .dgstudio-beam {
+  opacity: 1;
+  box-shadow: 0 0 12px #ad8cff66;
+}
+
+.dgstudio-network-verified .dgstudio-core {
+  border-color: #79c9ff;
+  box-shadow:
+    0 0 45px #649fff66,
+    0 0 100px #9563ff33;
+}
+
+.dgstudio-network-verified .dgstudio-network-legend {
+  color: #8dd4ff;
+}
+
+.dgstudio-target small {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

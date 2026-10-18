@@ -1,0 +1,234 @@
+.void-visual.void-flow-graph {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 420px;
+  padding: 25px 10px;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 53% 50%, rgba(127, 66, 212, .22), transparent 58%),
+    radial-gradient(ellipse at 93% 55%, rgba(68, 111, 214, .09), transparent 45%);
+}
+
+.void-flow-graph::before {
+  content: "";
+  position: absolute;
+  inset: 10%;
+  background-image:
+    linear-gradient(rgba(172, 140, 255, .06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(172, 140, 255, .06) 1px, transparent 1px);
+  background-size: 26px 26px;
+  mask-image: radial-gradient(ellipse, black 15%, transparent 72%);
+  pointer-events: none;
+}
+
+.void-flow-svg {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  max-width: 690px;
+  height: auto;
+  overflow: visible;
+  font-family: Inter, system-ui, sans-serif;
+}
+
+.void-graph-heading,
+.void-graph-footer {
+  fill: #a99ac9;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+}
+
+.void-graph-footer {
+  fill: #ba9edc;
+  font-size: 8px;
+}
+
+.void-graph-wire-base {
+  fill: none;
+  stroke: url(#voidGraphWire);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  opacity: .42;
+}
+
+.void-graph-wire-energy {
+  fill: none;
+  stroke: url(#voidGraphWire);
+  stroke-width: 3;
+  stroke-dasharray: 7 13;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 4px #c58bff);
+  animation: voidGraphTravel 1.35s linear infinite;
+}
+
+.void-graph-source {
+  fill: #241b39;
+  stroke: #9470cc;
+  stroke-width: 1.2;
+}
+
+.void-graph-wallet-a {
+  fill: #34213f;
+  stroke: #cf83cd;
+  stroke-width: 1.2;
+}
+
+.void-graph-wallet-b {
+  fill: #172943;
+  stroke: #6eacfc;
+  stroke-width: 1.2;
+}
+
+.void-graph-label {
+  fill: #ccb4ef;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .6px;
+}
+
+.void-graph-blue {
+  fill: #9bc9ff;
+}
+
+.void-graph-symbol {
+  fill: #daacff;
+  font-size: 28px;
+}
+
+.void-graph-name {
+  fill: #f4eaff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.void-graph-value {
+  fill: #fff5ff;
+  font-size: 33px;
+  font-weight: 850;
+  letter-spacing: -1px;
+}
+
+.void-graph-unit {
+  fill: #b0a4c9;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .5px;
+}
+
+.void-graph-halo {
+  fill: none;
+  stroke: #bd8cff;
+  stroke-width: 1;
+  opacity: .17;
+}
+
+.void-graph-orbit {
+  fill: none;
+  stroke: #ca8dff;
+  stroke-width: 1.5;
+  stroke-dasharray: 6 10;
+  opacity: .62;
+  animation: voidGraphOrbit 18s linear infinite;
+}
+
+.void-graph-core {
+  fill: url(#voidGraphCore);
+  stroke: #d19dff;
+  stroke-width: 1.7;
+  filter: drop-shadow(0 0 20px rgba(169, 100, 255, .3));
+}
+
+.void-graph-core-inner {
+  fill: none;
+  stroke: rgba(244, 153, 231, .22);
+  stroke-width: 1;
+}
+
+.void-graph-core-symbol {
+  fill: #e69afe;
+  font-size: 20px;
+}
+
+.void-graph-core-text {
+  fill: #f7eaff;
+  font-size: 25px;
+  font-weight: 900;
+  letter-spacing: 3px;
+}
+
+.void-graph-core-caption {
+  fill: #ceb1f0;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+}
+
+@keyframes voidGraphTravel {
+  to {
+    stroke-dashoffset: -80;
+  }
+}
+
+@keyframes voidGraphOrbit {
+  to {
+    stroke-dashoffset: -160;
+  }
+}
+
+@media (max-width: 680px) {
+  .void-visual.void-flow-graph {
+    min-height: 280px;
+    padding: 20px 5px;
+    transform: none;
+  }
+
+  .void-flow-svg {
+    min-width: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .void-graph-wire-energy,
+  .void-graph-orbit {
+    animation: none;
+  }
+}
+
+
+.void-graph-tracer {
+  fill: #fff3ff;
+  opacity: .95;
+  filter: drop-shadow(0 0 5px #e9a2ff) drop-shadow(0 0 11px #a978ff);
+}
+
+.void-graph-tracer-a {
+  fill: #ffb7e8;
+}
+
+.void-graph-tracer-b {
+  fill: #94d2ff;
+  filter: drop-shadow(0 0 5px #91cfff) drop-shadow(0 0 12px #78aaff);
+}
+
+.void-flow-graph:hover .void-graph-wire-energy {
+  animation-duration: .7s;
+  stroke-width: 3.8;
+}
+
+.void-flow-graph:hover .void-graph-orbit {
+  animation-duration: 8s;
+}
+
+.void-flow-graph .void-graph-wire-base {
+  opacity: .65;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .void-graph-tracer {
+    display: none;
+  }
+}

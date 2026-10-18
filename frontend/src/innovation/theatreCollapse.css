@@ -1,0 +1,116 @@
+.dealos-theatre-details {
+  margin: 28px 0 38px;
+  border: 1px solid rgba(174, 135, 255, 0.32);
+  border-radius: 22px;
+  background:
+    radial-gradient(ellipse at 95% 0%, rgba(117, 76, 214, 0.17), transparent 52%),
+    linear-gradient(125deg, #191329, #101426);
+  overflow: hidden;
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.19);
+}
+
+.dealos-theatre-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 25px 28px;
+  cursor: pointer;
+  list-style: none;
+  transition: background 180ms ease;
+}
+
+.dealos-theatre-toggle::-webkit-details-marker {
+  display: none;
+}
+
+.dealos-theatre-toggle:hover {
+  background: rgba(157, 115, 255, 0.07);
+}
+
+.dealos-theatre-toggle:focus-visible {
+  outline: 2px solid #c29aff;
+  outline-offset: -4px;
+}
+
+.dealos-theatre-kicker {
+  display: block;
+  margin-bottom: 10px;
+  color: #bb99ff;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.7px;
+}
+
+.dealos-theatre-toggle h3 {
+  margin: 0 0 9px;
+  color: #f7efff;
+  font-size: clamp(19px, 2.6vw, 27px);
+  letter-spacing: -0.8px;
+}
+
+.dealos-theatre-toggle p {
+  margin: 0;
+  color: #aaa0c5;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.dealos-theatre-toggle-right {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  flex-shrink: 0;
+  color: #c7a5ff;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+}
+
+.dealos-theatre-chevron {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid #72569c;
+  border-radius: 12px;
+  background: #302047;
+  color: #e9caff;
+  font-size: 20px;
+  transition: transform 180ms ease;
+}
+
+.dealos-theatre-details[open] .dealos-theatre-chevron {
+  transform: rotate(180deg);
+}
+
+.dealos-theatre-body {
+  padding: 23px;
+  border-top: 1px solid rgba(174, 135, 255, 0.2);
+}
+
+.dealos-theatre-body .two-columns {
+  margin: 0;
+}
+
+@media (max-width: 680px) {
+  .dealos-theatre-toggle {
+    padding: 19px;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .dealos-theatre-toggle-right {
+    justify-content: space-between;
+  }
+
+  .dealos-theatre-body {
+    padding: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dealos-theatre-chevron {
+    transition: none;
+  }
+}

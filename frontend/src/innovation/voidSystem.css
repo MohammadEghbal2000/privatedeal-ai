@@ -1,0 +1,588 @@
+:root {
+  color-scheme: dark;
+  --void-ink: #080914;
+  --void-surface: #111326;
+  --void-border: #34304f;
+  --void-violet: #aa80ff;
+  --void-pink: #ff80c1;
+  --void-blue: #68bdff;
+  --void-text: #f6f2ff;
+  --void-muted: #aca4c6;
+}
+
+body {
+  background:
+    radial-gradient(ellipse at 48% 5%, #36205d48, transparent 34%),
+    radial-gradient(ellipse at 95% 72%, #123b6733, transparent 35%),
+    #080914 !important;
+  color: var(--void-text);
+}
+
+body .app-shell {
+  background: transparent !important;
+}
+
+body .sidebar {
+  background:
+    radial-gradient(ellipse at 10% 2%, #49306b44, transparent 42%),
+    linear-gradient(180deg, #121022, #090b19 62%, #101025) !important;
+  border-right: 1px solid #413056 !important;
+  box-shadow: 15px 0 65px #00000038;
+}
+
+body .brand {
+  padding-bottom: 26px;
+  border-bottom: 1px solid #57416b33;
+}
+
+body .brand-symbol {
+  color: #130d25 !important;
+  background: linear-gradient(135deg, #f1a8ee, #a88fff 68%, #76bfff) !important;
+  border-radius: 15px !important;
+  box-shadow: 0 6px 26px #a77aff55;
+  transform: rotate(-7deg);
+}
+
+body .brand-dot {
+  color: var(--void-pink) !important;
+}
+
+body .nav-label {
+  color: #9d8db6 !important;
+  letter-spacing: 2.2px !important;
+}
+
+body .nav button {
+  border-radius: 12px !important;
+  transition: background .2s ease, transform .2s ease, color .2s ease;
+}
+
+body .nav button:hover {
+  color: #ffffff !important;
+  background: #8d65e31b !important;
+  transform: translateX(3px);
+}
+
+body .nav .nav-active {
+  color: #efe0ff !important;
+  background: linear-gradient(100deg, #663cab66, #271d4255) !important;
+  border-left: 3px solid #c38eff !important;
+  box-shadow: inset 0 0 25px #9c65ff12;
+}
+
+body .sidebar-bottom,
+body .connection-indicator {
+  border-color: #56446988 !important;
+  background: linear-gradient(155deg, #231b38, #121626) !important;
+}
+
+body .content {
+  background:
+    radial-gradient(ellipse at 85% 3%, #7335b013, transparent 28%),
+    transparent !important;
+}
+
+body .topbar {
+  border-bottom: 1px solid #55416e55 !important;
+  background: linear-gradient(90deg, #14102488, #0b0f1c22) !important;
+  border-radius: 0 0 18px 18px;
+}
+
+body .breadcrumb,
+body .nav-label,
+body .eyebrow {
+  color: #b4a3df !important;
+}
+
+body .avatar {
+  background: #34224d !important;
+  color: #e5c8ff !important;
+  border: 1px solid #956ac6 !important;
+}
+
+body .live-pill,
+body .outline-tag {
+  color: #e1c5ff !important;
+  background: #a273f011 !important;
+  border-color: #976ec64d !important;
+}
+
+body .stats-grid {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1.45fr) repeat(3, minmax(0, 1fr)) !important;
+  gap: 15px !important;
+  margin-top: 26px !important;
+}
+
+body .stat-card {
+  position: relative;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 148px;
+  padding: 24px !important;
+  border: 1px solid #4b3c68 !important;
+  border-radius: 20px !important;
+  background: linear-gradient(145deg, #1c1834, #101526) !important;
+  box-shadow: 0 15px 40px #0000002b;
+  transition: transform .25s ease, border-color .25s ease;
+}
+
+body .stat-card:hover,
+body .panel:hover {
+  transform: translateY(-3px);
+  border-color: #8561b777 !important;
+}
+
+body .stat-card:first-child {
+  background:
+    radial-gradient(circle at 100% 15%, #e86fc04d, transparent 49%),
+    linear-gradient(135deg, #322051, #181329) !important;
+  border-color: #865eb8 !important;
+}
+
+body .stat-card:nth-child(2) {
+  background:
+    radial-gradient(circle at 90% 0%, #7363f633, transparent 63%),
+    #17162b !important;
+}
+
+body .stat-card:nth-child(3) {
+  background:
+    radial-gradient(circle at 85% 10%, #398acc3c, transparent 65%),
+    #10192c !important;
+}
+
+body .stat-card:nth-child(4) {
+  background:
+    radial-gradient(circle at 90% 15%, #fa7b8c28, transparent 60%),
+    #1d1728 !important;
+  border-color: #75466088 !important;
+}
+
+body .stat-card:first-child::after {
+  content: "◎";
+  position: absolute;
+  right: -5px;
+  bottom: -60px;
+  color: #ffd5f21c;
+  font-size: 175px;
+  pointer-events: none;
+}
+
+body .stat-card > span {
+  color: #b8a6da !important;
+  letter-spacing: 1.6px !important;
+}
+
+body .stat-card strong {
+  position: relative;
+  z-index: 1;
+  color: #f9f1ff !important;
+  font-size: clamp(26px, 2.8vw, 39px) !important;
+  letter-spacing: -1.5px;
+}
+
+body .stat-card:nth-child(4) strong {
+  color: #ffabac !important;
+}
+
+body .stat-card p {
+  color: #a9a0c0 !important;
+}
+
+body .section-heading {
+  margin-top: 42px !important;
+  padding-top: 16px;
+  border-top: 1px solid #5c467348;
+}
+
+body .section-heading h2 {
+  color: #f8f4ff !important;
+  font-size: clamp(25px, 3vw, 35px) !important;
+  letter-spacing: -1.3px;
+}
+
+body .two-columns {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, .92fr) !important;
+  gap: 20px !important;
+}
+
+body .panel {
+  min-width: 0;
+  border: 1px solid #3d3657 !important;
+  border-radius: 20px !important;
+  background: linear-gradient(150deg, #191729, #101724) !important;
+  box-shadow: 0 14px 44px #0000002b;
+  transition: transform .25s ease, border-color .25s ease;
+}
+
+body .negotiation-panel {
+  background:
+    radial-gradient(circle at 0% 0%, #6d46a42a, transparent 55%),
+    linear-gradient(160deg, #19162b, #0d1525) !important;
+}
+
+body .contract-panel {
+  background:
+    radial-gradient(circle at 100% 0%, #436eb52c, transparent 52%),
+    linear-gradient(155deg, #141b31, #141323) !important;
+}
+
+body .deal-total {
+  background: linear-gradient(115deg, #503069, #242248) !important;
+  border: 1px solid #9066ba77 !important;
+  border-radius: 17px !important;
+}
+
+body .deal-total strong,
+body .deal-total b {
+  color: #ffe8ff !important;
+}
+
+body .milestone,
+body .requirement {
+  border-color: #57476355 !important;
+  color: #e6dff4 !important;
+}
+
+body .requirement > span,
+body .connection-line {
+  color: #ba91ff !important;
+}
+
+body .primary-button,
+body .da-primary,
+body .pl-upload-button,
+body .rgbcc-primary-button {
+  color: #140d29 !important;
+  background: linear-gradient(110deg, #f4b4e5, #b59aff 55%, #8acaff) !important;
+  border: 0 !important;
+  box-shadow: 0 8px 26px #9f75ff35;
+}
+
+body .ghost-button,
+body .rgbcc-secondary-button {
+  background: #241d38 !important;
+  color: #e8d8ff !important;
+  border: 1px solid #6c548c !important;
+}
+
+body .da-arena {
+  border-color: #655092 !important;
+  background:
+    radial-gradient(ellipse at 50% 55%, #7835b53b, transparent 46%),
+    radial-gradient(ellipse at 100% 0%, #295f9930, transparent 39%),
+    linear-gradient(150deg, #151126, #0b1122) !important;
+}
+
+body .da-agent {
+  border-color: #67518d !important;
+  background: linear-gradient(145deg, #261c3d, #11192a) !important;
+}
+
+body .da-freelancer {
+  border-color: #526caa !important;
+  background: linear-gradient(145deg, #181f42, #111729) !important;
+}
+
+body .da-core {
+  border-color: #c28bff !important;
+  background: radial-gradient(circle, #3d2466, #15182f) !important;
+  box-shadow: 0 0 60px #8951df33;
+}
+
+body .da-progress {
+  background: transparent !important;
+}
+
+body .da-event,
+body .da-controls {
+  border-color: #66517b66 !important;
+}
+
+body .pl-root {
+  border: 1px solid #634e91 !important;
+  border-radius: 24px !important;
+  background:
+    radial-gradient(circle at 93% 2%, #4c429b42, transparent 40%),
+    linear-gradient(145deg, #131328, #0d1425) !important;
+}
+
+body .pl-card {
+  border-color: #514273 !important;
+  background: #15172c !important;
+  border-radius: 18px !important;
+}
+
+body .pl-dropzone {
+  background:
+    radial-gradient(circle at 50% 25%, #8d55ca25, transparent 65%),
+    #20192f !important;
+  border: 1px dashed #9674d2 !important;
+  border-radius: 18px !important;
+}
+
+body .pl-upload-symbol,
+body .pl-eyebrow,
+body .pl-heading,
+body .pl-chip {
+  color: #cdadff !important;
+}
+
+body .pl-score-ring {
+  border-color: #8d73c6 !important;
+}
+
+body .pl-success,
+body .pl-check-pass {
+  color: #87d2ff !important;
+}
+
+body .rgbcc-shell {
+  border: 1px solid #56437e !important;
+  border-radius: 26px !important;
+  background:
+    radial-gradient(ellipse at 95% 0%, #7040ae33, transparent 45%),
+    linear-gradient(150deg, #100f23, #0b1222 80%) !important;
+}
+
+body .rgbcc-banner {
+  background: #b67c3b15 !important;
+  border-color: #d89a6866 !important;
+  color: #ffca9d !important;
+}
+
+body .rgbcc-stat,
+body .rgbcc-panel {
+  border-color: #4f3f71 !important;
+  background: #16172c !important;
+  border-radius: 17px !important;
+}
+
+body .rgbcc-stats {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 12px !important;
+}
+
+body .rgbcc-stats::before {
+  content: "SIMULATED SETTLEMENT · SEPARATE FROM THE API PREVIEW";
+  grid-column: 1 / -1;
+  padding: 10px 14px;
+  border: 1px solid #745b9155;
+  border-radius: 10px;
+  background: #211a38;
+  color: #c9b1ea;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+body .rgbcc-advanced {
+  border-color: #7554a0 !important;
+  background: #19142d !important;
+}
+
+body .rgbcc-mode-switch button.active {
+  background: #ae8aff !important;
+  color: #160e2a !important;
+}
+
+body .settlement-panel {
+  background:
+    radial-gradient(ellipse at 0% 0%, #7847b027, transparent 40%),
+    #111627 !important;
+}
+
+body .rail-node {
+  background: #32234e !important;
+  border-color: #7b59b1 !important;
+  color: #e6cdff !important;
+}
+
+body .green {
+  color: #86cfff !important;
+}
+
+body .footer {
+  border-color: #59467555 !important;
+  color: #9d91b7 !important;
+}
+
+@media (max-width: 1100px) {
+  body .stats-grid,
+  body .rgbcc-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  body .two-columns {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 650px) {
+  body .stats-grid,
+  body .rgbcc-stats {
+    grid-template-columns: 1fr !important;
+  }
+
+  body .stat-card {
+    min-height: 120px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body .stat-card,
+  body .panel,
+  body .nav button {
+    transition: none !important;
+  }
+}
+
+
+body .da-agent-avatar,
+body .da-event-icon {
+  background: linear-gradient(135deg, #ae83ff, #d89af1) !important;
+  color: #190e2b !important;
+}
+
+body .da-freelancer .da-agent-avatar {
+  background: linear-gradient(135deg, #849bff, #8cceff) !important;
+}
+
+body .da-kicker,
+body .da-agent-role,
+body .da-float-top,
+body .da-float-bottom,
+body .pl-eyebrow,
+body .pl-card-header,
+body .rgbcc-eyebrow {
+  color: #c5a2ff !important;
+}
+
+body .da-event {
+  background: linear-gradient(105deg, #241a3d, #14172e) !important;
+  border: 1px solid #654984 !important;
+}
+
+body .da-live-dot,
+body .rgbcc-live-dot {
+  background: #b48cff !important;
+  box-shadow: 0 0 14px #ac79ff88 !important;
+}
+
+body .da-network {
+  background-color: transparent !important;
+}
+
+body .da-progress-track {
+  background: #362b4d !important;
+  border-radius: 100px !important;
+  overflow: hidden;
+}
+
+body .pl-samples button {
+  background: #29203e !important;
+  border: 1px solid #7658a0 !important;
+  color: #e3cdff !important;
+  border-radius: 11px !important;
+}
+
+body .pl-samples button:hover {
+  background: #463161 !important;
+  border-color: #b38aff !important;
+}
+
+body .pl-fingerprint {
+  background: #171426 !important;
+  border: 1px solid #675184 !important;
+  border-radius: 13px !important;
+}
+
+body .pl-chip,
+body .pl-dot {
+  background-color: #362449 !important;
+  color: #dabaff !important;
+  border-color: #8063a6 !important;
+}
+
+body .rgbcc-recipient {
+  background: #16162c !important;
+  border-color: #4e426b !important;
+}
+
+body .rgbcc-recipient-symbol,
+body .rgbcc-count {
+  background: #382556 !important;
+  color: #d6b7ff !important;
+  border-color: #7657a9 !important;
+}
+
+body .rgbcc-recipient-status {
+  color: #b7a3d8 !important;
+}
+
+body .two-columns {
+  align-items: start !important;
+}
+
+body .negotiation-panel {
+  height: auto !important;
+  min-height: 390px !important;
+}
+
+body .chat-flow {
+  min-height: 180px !important;
+  max-height: 340px !important;
+  overflow-y: auto !important;
+}
+
+body .pl-grid {
+  align-items: start !important;
+}
+
+body .pl-card {
+  min-height: 0 !important;
+}
+
+body .pl-dropzone {
+  min-height: 205px !important;
+  padding: 25px !important;
+}
+
+body .pl-placeholder {
+  min-height: 130px !important;
+}
+
+body .rgbcc-advanced:not([open]) ~ .rgbcc-stats,
+body .rgbcc-advanced:not([open]) ~ .rgbcc-layout,
+body .rgbcc-advanced:not([open]) ~ .rgbcc-bottom,
+body .rgbcc-advanced:not([open]) ~ .rgbcc-footer,
+body .rgbcc-advanced:not([open]) ~ .rgbcc-note {
+  display: none !important;
+}
+
+body .rgbcc-advanced > summary {
+  background: linear-gradient(110deg, #251738, #141a33) !important;
+  color: #dabdff !important;
+}
+
+body .rgbcc-advanced[open] > summary {
+  background: #35244e !important;
+}
+
+body .da-complete,
+body .pl-check-pass {
+  color: #88caff !important;
+}
+
+@media (max-width: 900px) {
+  body .two-columns {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  body .negotiation-panel {
+    min-height: 320px !important;
+  }
+}
