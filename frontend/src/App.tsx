@@ -1,422 +1,265 @@
-import { useEffect, useState } from "react";
-import QvacPanel from "./QvacPanel";
-import PaymentStatusPanel from "./PaymentStatusPanel";
-import RGBBalancesPanel from "./RGBBalancesPanel";
+import { useCallback, useEffect, useState } from "react";
+import { api, type NegotiationState, type Role } from "./api";
+import { usePoll } from "./usePoll";
+import type { DealStatus } from "./rgbDealRunner";
+import QuoteStep from "./components/QuoteStep";
+import NegotiationStep from "./components/NegotiationStep";
+import SignStep, { type KeyRoles, type Keys } from "./components/SignStep";
+import PayStep from "./components/PayStep";
+import { ActivityPanel, KeysPanel, NodesPanel } from "./components/Sidebar";
+import { ErrorCallout, StepCard, explorerTx, shortId, type StepState } from "./components/ui";
 
+type Theme = "auto" | "light" | "dark";
 
-// ============================================
-// 1. TYPES: DATA RETURNED FROM THE BACKEND
-// ============================================
-
-type Agreement = {
-  id: string;
-  job: string;
-  price: number;
-  currency: string;
-  acceptedBy: "client" | "freelancer";
-  requiresHumanApproval: boolean;
-
-  approvals: {
-    client: boolean;
-    freelancer: boolean;
-  };
-};
-
-type NegotiationState = {
-  round: number;
-  totalRounds: number;
-  clientOffer: number;
-  freelancerOffer: number;
-
-  status: "negotiating" | "rounds_finished" | "agreed";
-
-  contractStatus:
-    | "not_proposed"
-    | "awaiting_approval"
-    | "approved";
-
-  agreement: Agreement | null;
-};
-
-// ============================================
-// 2. READ PUBLIC DATA FROM OUR BACKEND
-// ============================================
-
-async function getNegotiation(): Promise<NegotiationState> {
-  const response = await fetch("/api/negotiation", {
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    throw new Error("Cannot connect to negotiation backend");
-  }
-
-  return (await response.json()) as NegotiationState;
+// Keys live for this tab only (sessionStorage), never across tabs.
+function readKeys(): Keys {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem("pd-keys") ?? "null");
+    if (typeof saved?.client === "string" && typeof saved?.freelancer === "string") return saved;
+  } catch { /* storage can be blocked */ }
+  return { client: "", freelancer: "" };
 }
 
-// ============================================
-// 3. MAIN REACT COMPONENT
-// ============================================
+// People paste the whole console line: keep only the token itself.
+const normaliseKey = (value: string) =>
+  value.replace(/^\s*(client|freelancer)\s+token:\s*/i, "").trim();
 
-function App() {
-  const [state, setState] = useState<NegotiationState | null>(
-    null
-  );
+function readTheme(): Theme {
+  try {
+    const saved = localStorage.getItem("pd-theme");
+    return saved === "light" || saved === "dark" ? saved : "auto";
+  } catch {
+    return "auto";
+  }
+}
 
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+const STEP_LABELS = [
+  ["Quote", "Local AI reads the price"],
+  ["Negotiate", "Agents bargain privately"],
+  ["Approve", "Both people agree"],
+  ["Pay", "RGB transfer on Bitcoin"],
+  ["Done", "Receipt"],
+] as const;
 
-  // Load negotiation data when the webpage opens.
+export default function App() {
+  const negotiation = usePoll(api.negotiation, 4000);
+  const history = usePoll(api.history, 4000);
+  const nodes = usePoll(api.nodes, 15000);
+  const transfers = usePoll(api.transfers, 15000);
+
+  const [keys, setKeys] = useState<Keys>(readKeys);
+  const [keyCheck, setKeyCheck] = useState(0);
+  const [keyRoles, setKeyRoles] = useState<KeyRoles>({ client: null, freelancer: null });
+  const [skippedQuote, setSkippedQuote] = useState(false);
+  const [deal, setDeal] = useState<DealStatus | null>(null);
+  const [theme, setTheme] = useState<Theme>(readTheme);
+
   useEffect(() => {
-    let active = true;
+    const root = document.documentElement;
+    if (theme === "auto") delete root.dataset.theme;
+    else root.dataset.theme = theme;
+    try { localStorage.setItem("pd-theme", theme); } catch { /* optional */ }
+  }, [theme]);
 
-    getNegotiation()
-      .then((data) => {
-        if (active) {
-          setState(data);
-        }
-      })
-      .catch((err) => {
-        if (active) {
-          setError(String(err));
-        }
-      });
+  useEffect(() => {
+    try { sessionStorage.setItem("pd-keys", JSON.stringify(keys)); } catch { /* optional */ }
+  }, [keys]);
 
-    return () => {
-      active = false;
-    };
+  // Re-check keys now and then: a backend restart issues new ones.
+  useEffect(() => {
+    const timer = setInterval(() => setKeyCheck(c => c + 1), 20_000);
+    return () => clearInterval(timer);
   }, []);
 
-  // ============================================
-  // 4. REFRESH APPROVAL STATUS
-  // ============================================
-
-  async function refreshStatus() {
-    setBusy(true);
-    setError("");
-
-    try {
-      const data = await getNegotiation();
-      setState(data);
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  // ============================================
-  // 5. NEXT ROUND / RESET
-  // ============================================
-
-  async function sendAction(action: "next" | "reset") {
-    setBusy(true);
-    setError("");
-
-    try {
-      const response = await fetch(
-        `/api/negotiation/${action}`,
-        {
-          method: "POST",
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error("Backend request failed");
+  // Check which party each pasted key belongs to (no side effects).
+  useEffect(() => {
+    const timers = (["client", "freelancer"] as const).map(role => {
+      const token = keys[role].trim();
+      if (!token) {
+        setKeyRoles(r => ({ ...r, [role]: null }));
+        return undefined;
       }
+      if (keyCheck === 0) setKeyRoles(r => ({ ...r, [role]: "checking" }));
+      return setTimeout(async () => {
+        try {
+          const { role: found } = await api.role(token);
+          setKeyRoles(r => ({ ...r, [role]: found }));
+        } catch {
+          setKeyRoles(r => ({ ...r, [role]: null }));
+        }
+      }, 350);
+    });
+    return () => timers.forEach(t => t && clearTimeout(t));
+  }, [keys, keyCheck]);
 
-      const data: NegotiationState = await response.json();
+  const { setData: setNegotiation } = negotiation;
+  const { refresh: refreshHistory } = history;
+  const { refresh: refreshTransfers } = transfers;
 
-      setState(data);
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setBusy(false);
+  const applyState = useCallback((next: NegotiationState) => {
+    setNegotiation(next);
+    void refreshHistory();
+  }, [setNegotiation, refreshHistory]);
+
+  const onActivity = useCallback(() => { void refreshTransfers(); }, [refreshTransfers]);
+  const onDealChange = useCallback((d: DealStatus | null) => setDeal(d), []);
+
+  async function resetDeal() {
+    try {
+      applyState(await api.reset());
+      setSkippedQuote(false);
+      setDeal(null);
+    } catch {
+      void negotiation.refresh();
     }
   }
 
-  // ============================================
-  // 6. FRONTEND INTERFACE
-  // ============================================
+  const n = negotiation.data;
+  // Only a verified reading (or an explicit skip) completes step 1.
+  const quoteDone = !!n && (n.quote?.verified === true || n.round > 0 || skippedQuote);
+  const agreed = n?.status === "agreed";
+  const signed = n?.contractStatus === "approved";
+  const paidInFull = signed && !!deal?.dealSettled && deal.agreementId === n?.agreement?.id;
+
+  const states: StepState[] = [
+    quoteDone ? "done" : "active",
+    !quoteDone ? "locked" : agreed ? "done" : n?.status === "rounds_finished" ? "failed" : "active",
+    !agreed ? "locked" : signed ? "done" : "active",
+    !signed ? "locked" : paidInFull ? "done" : "active",
+    paidInFull ? "done" : "locked",
+  ];
+  const activeIndex = states.findIndex(s => s === "active" || s === "failed");
+  // A finished step folds away once the step after it is finished too.
+  const fold = (i: number) => states[i + 1] === "done";
+
+  const nodeList = nodes.data?.nodes ?? null;
 
   return (
-    <main
-      style={{
-        padding: 24,
-        maxWidth: 900,
-        margin: "auto",
-        textAlign: "left",
-      }}
-    >
-      {/* HEADER */}
-      <header style={{ marginBottom: 30 }}>
-        <h1>🤝 PrivateDeal AI</h1>
-
-        <p>Privacy-Preserving AI Negotiation on Bitcoin</p>
-
-        <p>QVAC + RGB + KaleidoMind</p>
+    <div className="app">
+      <header className="topbar">
+        <div className="brand">
+          <div className="brand-mark" aria-hidden="true">P</div>
+          <div>
+            <h1>PrivateDeal AI</h1>
+            <p>Private AI negotiation · paid on Bitcoin with RGB</p>
+          </div>
+        </div>
+        <div className="node-pills" aria-label="RGB node status">
+          {(nodeList ?? [{ name: "alice" }, { name: "bob" }]).map(node => {
+            const full = nodes.error ? undefined : nodeList?.find(x => x.name === node.name);
+            return (
+              <span key={node.name} className="node-pill">
+                <span className={`dot ${full ? (full.online ? "is-online" : "is-offline") : ""}`} aria-hidden="true" />
+                <strong>{node.name === "alice" ? "Alice" : "Bob"}</strong>
+                {full ? (full.online ? `block ${full.height ?? "?"}` : "offline") : "…"}
+              </span>
+            );
+          })}
+        </div>
+        <button className="icon-btn" title={`Theme: ${theme}`} aria-label={`Change theme (now ${theme})`}
+          onClick={() => setTheme(t => (t === "auto" ? "dark" : t === "dark" ? "light" : "auto"))}>
+          {theme === "dark" ? "🌙" : theme === "light" ? "☀️" : "🖥️"}
+        </button>
       </header>
 
-      {/* ERROR MESSAGE */}
-      {error && (
-        <p
-          role="alert"
-          style={{
-            color: "#ff6666",
-            padding: 12,
-            border: "1px solid #ff6666",
-            borderRadius: 8,
-          }}
-        >
-          ⚠️ {error}
-        </p>
-      )}
-<QvacPanel />
-<PaymentStatusPanel />
-<RGBBalancesPanel />
+      <p className="muted" style={{ marginTop: 12 }}>
+        A client and a freelancer agree on a price without revealing their limits: local AI reads the quote,
+        two agents negotiate, both people sign, and the agreed amount moves on Bitcoin through RGB.
+      </p>
 
-      {/* LOADING */}
-      {!state ? (
-        <p>Connecting to negotiation backend...</p>
-      ) : (
-        <>
-          {/* NEGOTIATION ROUND */}
-          <h2>
-            Negotiation Round: {state.round} /{" "}
-            {state.totalRounds}
-          </h2>
+      <p className="visually-hidden" aria-live="polite">
+        {activeIndex >= 0 ? `Step ${activeIndex + 1} of 5: ${STEP_LABELS[activeIndex]![0]}` : "Deal complete"}
+      </p>
 
-          {/* AGENT PANELS */}
-          <section
-            style={{
-              display: "flex",
-              gap: 20,
-              flexWrap: "wrap",
-              marginTop: 20,
-            }}
-          >
-            {/* CLIENT AGENT */}
-            <article
-              style={{
-                flex: 1,
-                minWidth: 210,
-                padding: 24,
-                background: "#263b58",
-                color: "white",
-                borderRadius: 12,
-              }}
-            >
-              <h2>👨‍💼 Client Agent</h2>
+      <ol className="stepper" aria-label="Progress">
+        {STEP_LABELS.map(([title, sub], i) => (
+          <li key={title}
+            className={states[i] === "done" ? "is-done" : states[i] === "failed" ? "is-failed" : i === activeIndex ? "is-active" : ""}
+            aria-current={i === activeIndex ? "step" : undefined}>
+            <strong>{title}</strong>{sub}
+          </li>
+        ))}
+      </ol>
 
-              <p>Wants to hire a freelancer</p>
-
-              <h1>{state.clientOffer} USDT</h1>
-
-              <p>Current offer</p>
-            </article>
-
-            {/* FREELANCER AGENT */}
-            <article
-              style={{
-                flex: 1,
-                minWidth: 210,
-                padding: 24,
-                background: "#285044",
-                color: "white",
-                borderRadius: 12,
-              }}
-            >
-              <h2>👩‍💻 Freelancer Agent</h2>
-
-              <p>Wants to complete the job</p>
-
-              <h1>{state.freelancerOffer} USDT</h1>
-
-              <p>Current asking price</p>
-            </article>
-          </section>
-
-          {/* ===================================== */}
-          {/* CONTRACT AND APPROVAL STATUS */}
-          {/* ===================================== */}
-
-          {state.status === "agreed" && state.agreement ? (
-            <section
-              style={{
-                background: "#173d32",
-                color: "white",
-                padding: 24,
-                marginTop: 24,
-                borderRadius: 12,
-                border: "1px solid #42b883",
-              }}
-            >
-              <h2>📄 Proposed Contract</h2>
-
-              <p>
-                <strong>Job:</strong> {state.agreement.job}
-              </p>
-
-              <h1>
-                {state.agreement.price}{" "}
-                {state.agreement.currency}
-              </h1>
-
-              <p>
-                <strong>Accepted by:</strong>{" "}
-                {state.agreement.acceptedBy} agent
-              </p>
-
-              <hr />
-
-              {/* HUMAN APPROVAL SECTION */}
-              <h2>🔐 Human Approval Status</h2>
-
-              {/* CLIENT APPROVAL */}
-              <p>
-                👨‍💼 Client:{" "}
-                <strong>
-                  {state.agreement.approvals.client
-                    ? "✅ Approved"
-                    : "⏳ Pending"}
-                </strong>
-              </p>
-
-              {/* FREELANCER APPROVAL */}
-              <p>
-                👩‍💻 Freelancer:{" "}
-                <strong>
-                  {state.agreement.approvals.freelancer
-                    ? "✅ Approved"
-                    : "⏳ Pending"}
-                </strong>
-              </p>
-
-              <hr />
-
-              {/* FINAL CONTRACT STATUS */}
-              {state.contractStatus === "approved" ? (
-                <div
-                  style={{
-                    padding: 16,
-                    background: "#246548",
-                    borderRadius: 8,
-                    marginTop: 20,
-                  }}
-                >
-                  <h2>✅ Contract Approved!</h2>
-
-                  <p>
-                    Both client and freelancer have
-                    approved the agreement.
-                  </p>
-
-                  <p>
-                    The contract is ready for the
-                    next integration stage.
-                  </p>
-                </div>
-              ) : (
-                <div
-                  style={{
-                    padding: 16,
-                    background: "#604b20",
-                    borderRadius: 8,
-                    marginTop: 20,
-                  }}
-                >
-                  <h2>⏳ Awaiting Human Approval</h2>
-
-                  <p>
-                    Both parties must approve before
-                    the contract is confirmed.
-                  </p>
-                </div>
-              )}
-
-              {/* REFRESH BUTTON */}
-              <button
-                onClick={refreshStatus}
-                disabled={busy}
-                style={{
-                  marginTop: 20,
-                  padding: "12px 20px",
-                }}
-              >
-                🔄 Refresh Approval Status
-              </button>
-
-              <p style={{ marginTop: 20 }}>
-                <small>
-                  No RGB payment has been sent.
-                </small>
-              </p>
-            </section>
+      <div className="layout">
+        <main className="flow">
+          {!n ? (
+            negotiation.error
+              ? <ErrorCallout error={negotiation.error} />
+              : <div className="card muted">Connecting to the PrivateDeal backend…</div>
           ) : (
-            <section style={{ marginTop: 24 }}>
-              <h2>
-                {state.status === "rounds_finished"
-                  ? "❌ No agreement reached"
-                  : "🔄 Negotiation in progress..."}
-              </h2>
-            </section>
+            <>
+              {negotiation.error ? <ErrorCallout error={negotiation.error} /> : null}
+
+              <QuoteStep state={states[0]!} autoCollapse={fold(0)} negotiation={n} onUpdate={applyState}
+                onSkip={() => setSkippedQuote(true)} />
+
+              <NegotiationStep state={states[1]!} autoCollapse={fold(1)} negotiation={n} history={history.data}
+                onUpdate={applyState} onReset={() => void resetDeal()} />
+
+              <SignStep state={states[2]!} autoCollapse={fold(2)} negotiation={n} keys={keys} keyRoles={keyRoles}
+                onUpdate={applyState} onReset={() => void resetDeal()} />
+
+              <PayStep state={states[3]!} autoCollapse={fold(3)} negotiation={n}
+                clientKey={keys.client.trim()} clientKeyOk={keyRoles.client === "client"}
+                nodes={nodeList} onDealChange={onDealChange} onActivity={onActivity} />
+
+              <StepCard number={5} title="Receipt" state={states[4]!} autoCollapse={false}
+                intro="A summary you can show to both parties once the deal is paid."
+                summary={null}>
+                {paidInFull && n.agreement && deal ? (
+                  <div className="stack">
+                    <div className="callout is-success">
+                      <strong>✓ {n.agreement.job} — {n.agreement.price} PDAI paid</strong>
+                      <p>
+                        {n.quote?.verified
+                          ? <>Local QVAC read the freelancer's {n.quote.askingPrice} USD quote; the agents agreed on {n.agreement.price} PDAI (1 PDAI = 1 USD in this demo). </>
+                          : <>The agents agreed on {n.agreement.price} PDAI. </>}
+                        Alice paid Bob in {deal.milestones.length} RGB transfers, each confirmed by both nodes.
+                      </p>
+                    </div>
+                    <div style={{ overflowX: "auto" }}>
+                    <table className="data">
+                      <thead><tr><th>Milestone</th><th>Amount</th><th>Transaction</th><th>Settled</th></tr></thead>
+                      <tbody>
+                        {deal.milestones.map(m => (
+                          <tr key={m.milestoneId}>
+                            <td>{m.milestoneId}</td>
+                            <td>{m.amountPDAI} PDAI</td>
+                            <td>{m.txid
+                              ? <a href={explorerTx(m.txid)} target="_blank" rel="noreferrer" className="mono">{shortId(m.txid, 8)}</a>
+                              : "—"}</td>
+                            <td>{m.settledAt ? new Date(m.settledAt).toLocaleString() : "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    </div>
+                    <p className="muted">Agreement <code title={n.agreement.id}>{shortId(n.agreement.id, 10)}</code></p>
+                    <div className="row">
+                      <button className="btn btn-secondary" onClick={() => void resetDeal()}>Start a new deal</button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="muted">Appears when both milestones are paid.</p>
+                )}
+              </StepCard>
+            </>
           )}
+        </main>
 
-          {/* ===================================== */}
-          {/* NEGOTIATION CONTROL BUTTONS */}
-          {/* ===================================== */}
+        <aside className="sidebar">
+          <KeysPanel keys={keys} keyRoles={keyRoles}
+            onChange={(role: Role, value) => setKeys(k => ({ ...k, [role]: normaliseKey(value) }))} />
+          <NodesPanel nodes={nodeList} error={nodes.error} />
+          <ActivityPanel transfers={transfers.data?.transfers ?? null}
+            unavailable={transfers.data?.unavailable ?? []} error={transfers.error} />
+        </aside>
+      </div>
 
-          <div
-            style={{
-              display: "flex",
-              gap: 12,
-              flexWrap: "wrap",
-              marginTop: 30,
-            }}
-          >
-            <button
-              disabled={
-                busy ||
-                state.round >= state.totalRounds ||
-                state.status === "agreed"
-              }
-              onClick={() => sendAction("next")}
-            >
-              Next Negotiation Round →
-            </button>
-
-            <button
-              disabled={busy}
-              onClick={() => sendAction("reset")}
-            >
-              🔄 Reset Negotiation
-            </button>
-          </div>
-
-          {/* ===================================== */}
-          {/* FOOTER */}
-          {/* ===================================== */}
-
-          <footer style={{ marginTop: 40 }}>
-            <hr />
-
-            <p
-              style={{
-                fontSize: 13,
-                opacity: 0.7,
-              }}
-            >
-              Demo mode: Negotiation and approval
-              verification run on the local Node.js
-              backend. QVAC inference and real RGB
-              payments are not connected yet.
-            </p>
-          </footer>
-        </>
-      )}
-    </main>
+      <footer className="muted" style={{ marginTop: 32, textAlign: "center" }}>
+        RGB: PDAI asset on Mutinynet (Bitcoin signet) · QVAC: Qwen3 0.6B running locally · Payments need both approvals
+      </footer>
+    </div>
   );
 }
-
-export default App;
-

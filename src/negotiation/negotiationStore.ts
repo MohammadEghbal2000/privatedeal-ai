@@ -8,6 +8,21 @@ import {
 
 import { dirname, resolve } from "node:path";
 
+// What the agents learned from the freelancer's quote.
+export type PriceSignal = {
+  // qvac: read by the local model; legacy_demo: the old fixed signal.
+  source: "qvac" | "legacy_demo";
+  message: string | null;
+  askingPrice: number | null;
+  verified: boolean;
+  estimatedFloor: number | null;
+  confidence: number;
+  fromRound: number;
+  // How the price was checked: one explicit USD price, or QVAC's own
+  // total for a per-word rate.
+  basis?: "usd" | "per_word" | null;
+};
+
 export type SavedNegotiation = {
   currentRound: number;
   sessionId: string;
@@ -15,7 +30,24 @@ export type SavedNegotiation = {
     client: boolean;
     freelancer: boolean;
   };
+  // Older saved files have neither field.
+  signal?: PriceSignal | null;
+  approvedAgreementId?: string | null;
 };
+
+function validSignal(value: unknown): value is PriceSignal {
+  const s = value as PriceSignal;
+  return (
+    typeof s === "object" && s !== null &&
+    (s.source === "qvac" || s.source === "legacy_demo") &&
+    (s.message === null || typeof s.message === "string") &&
+    (s.askingPrice === null || Number.isFinite(s.askingPrice)) &&
+    typeof s.verified === "boolean" &&
+    (s.estimatedFloor === null || Number.isFinite(s.estimatedFloor)) &&
+    Number.isFinite(s.confidence) &&
+    Number.isInteger(s.fromRound)
+  );
+}
 
 const FILE = resolve(
   process.cwd(),
@@ -55,7 +87,10 @@ state.currentRound > 5 ||
     typeof state.sessionId !== "string" ||
     !state.sessionId ||
     typeof state.approvals?.client !== "boolean" ||
-    typeof state.approvals?.freelancer !== "boolean"
+    typeof state.approvals?.freelancer !== "boolean" ||
+    (state.signal != null && !validSignal(state.signal)) ||
+    (state.approvedAgreementId != null &&
+      typeof state.approvedAgreementId !== "string")
   ) {
     throw new Error("Invalid saved negotiation data");
   }

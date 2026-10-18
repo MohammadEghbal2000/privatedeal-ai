@@ -58,5 +58,6 @@ export function calculateOffer(input: StrategyInput): number {
 
   const offer = start + progress * (target - start);
 
-  return Math.round(offer * 100) / 100;
+  // Whole units, so every agreement can be paid in whole PDAI.
+  return Math.round(offer);
 }

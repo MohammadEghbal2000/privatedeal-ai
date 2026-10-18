@@ -1,5 +1,5 @@
 
-import { createServer } from "node:http";
+import { createServer, type IncomingMessage } from "node:http";
 import {
   randomBytes,
   randomUUID,
@@ -11,6 +11,7 @@ import { calculateOffer } from "./strategy.js";
 import {
   loadNegotiationState,
   saveNegotiationState,
+  type PriceSignal,
 } from "./negotiationStore.js";
 
 type Role = "client" | "freelancer";
@@ -51,11 +52,35 @@ let approvals = savedState?.approvals ?? {
   freelancer: false,
 };
 
+// The fixed signal used before QVAC drove the negotiation:
+// 64 = 0.8 x the 80 USD quote of the original demo message.
+const LEGACY_SIGNAL: PriceSignal = {
+  source: "legacy_demo",
+  message: null,
+  askingPrice: null,
+  verified: false,
+  estimatedFloor: 64,
+  confidence: 0.8,
+  fromRound: 3,
+};
+
+// A session saved by the older backend keeps its original terms.
+let signal: PriceSignal | null =
+  savedState && savedState.signal === undefined
+    ? LEGACY_SIGNAL
+    : savedState?.signal ?? null;
+
+// Approvals count only for the exact terms that were approved.
+let approvedAgreementId: string | null =
+  savedState?.approvedAgreementId ?? null;
+
 function persistState() {
   saveNegotiationState({
     currentRound,
     sessionId,
     approvals: { ...approvals },
+    signal,
+    approvedAgreementId,
   });
 }
 
@@ -95,23 +120,48 @@ function identifyRole(
 
 // NEGOTIATION OFFERS
 function getOffers(round: number) {
-  // Temporary simulated QVAC signal
-  const estimatedFloor =
-    round >= 3 ? 64 : undefined;
+  // The client's opponent model: QVAC's estimate of the
+  // freelancer's floor, used once the quote is known.
+  const modelled =
+    signal !== null &&
+    signal.estimatedFloor !== null &&
+    signal.confidence > 0 &&
+    round >= signal.fromRound;
 
-  const confidence =
-    round >= 3 ? 0.8 : 0;
+  // A verified quote anchors both agents: the freelancer opens at it
+  // and will not go below its own floor or 0.8 x its quote; the client
+  // opens at no more than half of it. 80 USD keeps 40 / 80 / 60.
+  const quoted =
+    signal?.source === "qvac" &&
+    signal.verified &&
+    signal.askingPrice !== null &&
+    signal.estimatedFloor !== null
+      ? signal
+      : null;
+
+  const freelancerLimit = quoted
+    ? Math.min(freelancer.limit, quoted.estimatedFloor!)
+    : freelancer.limit;
+  const freelancerStart = quoted
+    ? Math.max(freelancerLimit, quoted.askingPrice!)
+    : freelancer.start;
+  const clientStart = quoted
+    ? Math.min(client.start, Math.round(quoted.askingPrice! / 2))
+    : client.start;
 
   return {
     clientOffer: calculateOffer({
       ...client,
+      start: clientStart,
       round,
-      estimatedFloor,
-      confidence,
+      estimatedFloor: modelled ? signal!.estimatedFloor! : undefined,
+      confidence: modelled ? signal!.confidence : 0,
     }),
 
     freelancerOffer: calculateOffer({
       ...freelancer,
+      start: freelancerStart,
+      limit: freelancerLimit,
       round,
     }),
   };
@@ -181,6 +231,17 @@ function getPublicState() {
     totalRounds,
     ...getOffers(currentRound),
 
+    // The freelancer's quote and what local QVAC read from it.
+    quote: signal && signal.source === "qvac"
+      ? {
+          message: signal.message,
+          askingPrice: signal.askingPrice,
+          verified: signal.verified,
+          estimatedFloor: signal.verified ? signal.estimatedFloor : null,
+          basis: signal.basis ?? null,
+        }
+      : null,
+
     // Preserve compatibility with our React UI.
     status: agreement
       ? "agreed"
@@ -201,6 +262,138 @@ function getPublicState() {
         }
       : null,
   };
+}
+
+type ApprovedAgreement = NonNullable<ReturnType<typeof getAgreement>>;
+type Send = (statusCode: number, data: unknown) => void;
+
+function errorDetail(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+// SHARED CHECKS FOR REAL RGB MILESTONE ACTIONS
+// Returns null after sending an error response.
+async function readRgbMilestoneRequest(
+  req: IncomingMessage,
+  send: Send,
+  confirm: string
+): Promise<{
+  agreement: ApprovedAgreement;
+  milestoneId: 1 | 2;
+  amountPDAI: number;
+} | null> {
+  if (identifyRole(req.headers.authorization) !== "client") {
+    send(401, { error: "Client authorization required" });
+    return null;
+  }
+
+  const agreement = getAgreement();
+  if (!agreement || !approvals.client || !approvals.freelancer) {
+    send(403, { error: "Both approvals required" });
+    return null;
+  }
+
+  // Explicit demo mapping, NOT a real exchange rate.
+  if (agreement.currency !== "DEMO_USDT") {
+    send(400, { error: "Unsupported demo currency" });
+    return null;
+  }
+
+  const contentType = req.headers["content-type"] ?? "";
+  if (!/^application\/json(?:;|$)/i.test(contentType)) {
+    send(415, { error: "Expected JSON" });
+    return null;
+  }
+
+  let raw = "";
+  for await (const chunk of req) {
+    raw += chunk.toString();
+    if (raw.length > 2048) {
+      send(413, { error: "Request too large" });
+      return null;
+    }
+  }
+
+  let data: {
+    agreementId?: string;
+    milestoneId?: number;
+    confirm?: string;
+  };
+
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    send(400, { error: "Invalid JSON" });
+    return null;
+  }
+
+  const milestoneId = data?.milestoneId;
+
+  if (
+    data?.agreementId !== agreement.id ||
+    (milestoneId !== 1 && milestoneId !== 2) ||
+    data?.confirm !== confirm
+  ) {
+    send(400, {
+      error: "Invalid agreement, milestone or confirmation",
+    });
+    return null;
+  }
+
+  const { pdaiMilestoneAmounts } =
+    await import("./rgbDealStatus.js");
+
+  let amountPDAI: number;
+  try {
+    amountPDAI = pdaiMilestoneAmounts(agreement.price)[milestoneId - 1]!;
+  } catch (error) {
+    send(400, { error: errorDetail(error) });
+    return null;
+  }
+
+  const { getMockMilestoneReceipt } =
+    await import("./mockSettlement.js");
+
+  if (await getMockMilestoneReceipt(agreement.id, milestoneId)) {
+    send(409, { error: `Milestone ${milestoneId} already mock-paid` });
+    return null;
+  }
+
+  return { agreement, milestoneId, amountPDAI };
+}
+
+// Milestone 2 is paid only after milestone 1 settles on RGB.
+async function previousMilestoneSettled(
+  agreement: ApprovedAgreement,
+  milestoneId: 1 | 2
+) {
+  if (milestoneId === 1) {
+    return true;
+  }
+
+  const { getRgbDealStatus } =
+    await import("./rgbDealStatus.js");
+
+  const deal = await getRgbDealStatus(agreement.id, agreement.price);
+  return deal.milestones[0]?.settled === true;
+}
+
+// Terms are recomputed at startup; never carry approvals over
+// to terms nobody approved (e.g. after a strategy change).
+{
+  const agreementAtStart = getAgreement();
+
+  if (approvals.client || approvals.freelancer) {
+    if (savedState?.approvedAgreementId === undefined) {
+      // Older file: its legacy signal reproduces the same terms.
+      approvedAgreementId = agreementAtStart?.id ?? null;
+    } else if (approvedAgreementId !== agreementAtStart?.id) {
+      console.warn("Saved approvals do not match current terms; cleared");
+      approvals = { client: false, freelancer: false };
+      approvedAgreementId = null;
+    }
+    persistState();
+  }
 }
 
 // HTTP API
@@ -443,7 +636,7 @@ const server = createServer(async (req, res) => {
   }
 
 
-  // REAL RGB STATUS: verified against Alice and Bob.
+  // REAL RGB DEAL STATUS: both milestones, verified on Alice and Bob.
   if (req.method === "GET" &&
       path === "/api/payment/rgb/status") {
     const agreement = getAgreement();
@@ -454,246 +647,102 @@ const server = createServer(async (req, res) => {
     }
 
     try {
-      const { existsSync, readFileSync } = await import("node:fs");
-      const recordId = createHash("sha256")
-        .update(JSON.stringify([agreement.id, 1]))
-        .digest("hex");
-      const file = `/workspaces/.privatedeal-rgb-payments/${recordId}.json`;
+      const { getRgbDealStatus } =
+        await import("./rgbDealStatus.js");
 
-      if (!existsSync(file)) {
-        return send(200, {
-          mode: "real_rgb", milestoneId: 1,
-          status: "not_prepared", settled: false
-        });
-      }
-
-      const intent = JSON.parse(readFileSync(file, "utf8")) as {
-        agreementId: string;
-        milestoneId: number;
-        amountPDAI: number;
-        recipientId: string;
-        status: string;
-        txid?: string;
-      };
-
-      if (intent.agreementId !== agreement.id ||
-          intent.milestoneId !== 1) {
-        return send(409, { error: "Payment record mismatch" });
-      }
-
-      const assetId =
-        "rgb:c7L6N5Oa-3VOzRHR-r_V8wpW-N3kl35E-1Nc8a4g-EZwQ9dQ";
-
-      const readTransfers = async (port: number) => {
-        const response = await fetch(
-          `http://127.0.0.1:${port}/listtransfers`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              asset_filter: { type: "Id", value: assetId }
-            }),
-            signal: AbortSignal.timeout(15000)
-          }
-        );
-        if (!response.ok) throw new Error("RGB node unavailable");
-        const data = await response.json() as {
-          transfers?: Array<{
-            kind: string;
-            status: string;
-            recipient_id: string | null;
-          }>
-        };
-        if (!Array.isArray(data.transfers)) {
-          throw new Error("Invalid transfer response");
-        }
-        return data.transfers.filter(
-          t => t.recipient_id === intent.recipientId
-        );
-      };
-
-      const [alice, bob] = await Promise.all([
-        readTransfers(3001), readTransfers(3002)
-      ]);
-
-      const aliceSend = alice.find(t => t.kind === "Send");
-      const bobReceive = bob.find(t => t.kind === "ReceiveWitness");
-
-      const settled =
-        Boolean(intent.txid) &&
-        aliceSend?.status === "Settled" &&
-        bobReceive?.status === "Settled";
-
-      return send(200, {
-        mode: "real_rgb",
-        milestoneId: 1,
-        amountPDAI: intent.amountPDAI,
-        status: settled ? "settled" : intent.status,
-        aliceStatus: aliceSend?.status ?? null,
-        bobStatus: bobReceive?.status ?? null,
-        txid: intent.txid ?? null,
-        settled
-      });
+      return send(200,
+        await getRgbDealStatus(agreement.id, agreement.price));
     } catch (error) {
       console.error("RGB status check failed:", error);
-      return send(503, { error: "Cannot verify RGB settlement" });
+      return send(503, {
+        error: "Cannot verify RGB settlement",
+        detail: errorDetail(error),
+      });
     }
   }
 
+  // ADVANCE RGB TRANSFERS: refresh both nodes. Sends nothing.
+  if (req.method === "POST" &&
+      path === "/api/payment/rgb/sync") {
+    if (!identifyRole(req.headers.authorization)) {
+      return send(401, { error: "Party authorization required" });
+    }
+
+    const agreement = getAgreement();
+    if (!agreement ||
+        !approvals.client ||
+        !approvals.freelancer) {
+      return send(403, { error: "Both approvals required" });
+    }
+
+    try {
+      const { refreshRgbTransfers, getRgbDealStatus } =
+        await import("./rgbDealStatus.js");
+
+      await refreshRgbTransfers();
+
+      return send(200,
+        await getRgbDealStatus(agreement.id, agreement.price));
+    } catch (error) {
+      console.error("RGB refresh failed:", error);
+      return send(503, {
+        error: "RGB refresh failed",
+        detail: errorDetail(error),
+      });
+    }
+  }
 
   // RENEW REAL RGB INVOICE - NO PAYMENT IS SENT.
   if (
     req.method === "POST" &&
     path === "/api/payment/rgb/renew"
   ) {
-    if (identifyRole(req.headers.authorization) !== "client") {
-      return send(401, { error: "Client authorization required" });
-    }
+    const checked = await readRgbMilestoneRequest(
+      req, send, "RENEW_REAL_PDAI_INVOICE"
+    );
+    if (!checked) return;
 
-    const agreement = getAgreement();
-    if (!agreement || !approvals.client || !approvals.freelancer) {
-      return send(403, { error: "Both approvals required" });
-    }
-
-    if (agreement.currency !== "DEMO_USDT") {
-      return send(400, { error: "Unsupported currency" });
-    }
-
-    const contentType = req.headers["content-type"] ?? "";
-    if ((contentType.split(";")[0] ?? "").trim().toLowerCase() !== "application/json") {
-      return send(415, { error: "Expected JSON" });
-    }
-
-    let raw = "";
-    for await (const chunk of req) {
-      raw += chunk.toString();
-      if (raw.length > 2048) {
-        return send(413, { error: "Request too large" });
-      }
-    }
-
-    let data: {
-      agreementId?: string;
-      milestoneId?: number;
-      confirm?: string;
-    };
+    const { agreement, milestoneId, amountPDAI } = checked;
 
     try {
-      data = JSON.parse(raw);
-    } catch {
-      return send(400, { error: "Invalid JSON" });
-    }
-
-    if (
-      data?.agreementId !== agreement.id ||
-      data?.milestoneId !== 1 ||
-      data?.confirm !== "RENEW_REAL_PDAI_INVOICE"
-    ) {
-      return send(400, { error: "Invalid renewal authorization" });
-    }
-
-    const amountPDAI =
-      Math.floor(Math.round(agreement.price * 100) / 2) / 100;
-
-    if (!Number.isSafeInteger(amountPDAI) || amountPDAI <= 0) {
-      return send(400, { error: "Invalid milestone amount" });
-    }
-
-    try {
-      const { getMockMilestoneReceipt } =
-        await import("./mockSettlement.js");
-
-      if (await getMockMilestoneReceipt(agreement.id, 1)) {
-        return send(409, { error: "Milestone already mock-paid" });
-      }
-
       const { renewRgbMilestone } =
         await import("./realRgbRenewal.js");
 
       const result = await renewRgbMilestone(
-        agreement.id, 1, amountPDAI
+        agreement.id, milestoneId, amountPDAI
       );
 
       return send(200, {
         mode: "real_rgb",
-        milestoneId: 1,
+        milestoneId,
         ...result
       });
     } catch (error) {
       console.error("RGB renewal blocked:", error);
       return send(409, {
-        error: "Renewal blocked; inspect payment history and nodes"
+        error: "Renewal blocked; inspect payment history and nodes",
+        detail: errorDetail(error),
       });
     }
   }
 
-  // REAL RGB MILESTONE PREPARATION
+  // REAL RGB MILESTONE PREPARATION: Bob creates the invoice.
   if (
     req.method === "POST" &&
     path === "/api/payment/rgb/prepare"
   ) {
-    if (identifyRole(req.headers.authorization) !== "client") {
-      return send(401, { error: "Client authorization required" });
-    }
+    const checked = await readRgbMilestoneRequest(
+      req, send, "PREPARE_REAL_PDAI_PAYMENT"
+    );
+    if (!checked) return;
 
-    const agreement = getAgreement();
-
-    if (!agreement || !approvals.client || !approvals.freelancer) {
-      return send(403, { error: "Both approvals required" });
-    }
-
-    const contentType = req.headers["content-type"] ?? "";
-    if (!/^application\/json(?:;|$)/i.test(contentType)) {
-      return send(415, { error: "Expected JSON" });
-    }
-
-    let raw = "";
-    for await (const chunk of req) {
-      raw += chunk.toString();
-      if (raw.length > 2048) {
-        return send(413, { error: "Request too large" });
-      }
-    }
-
-    let data: {
-      agreementId?: string;
-      milestoneId?: number;
-      confirm?: string;
-    };
+    const { agreement, milestoneId, amountPDAI } = checked;
 
     try {
-      data = JSON.parse(raw);
-    } catch {
-      return send(400, { error: "Invalid JSON" });
-    }
-
-    if (
-      data?.agreementId !== agreement.id ||
-      data?.milestoneId !== 1 ||
-      data?.confirm !== "PREPARE_REAL_PDAI_PAYMENT"
-    ) {
-      return send(400, {
-        error: "Invalid agreement, milestone or confirmation",
-      });
-    }
-
-    // Explicit demo mapping, NOT a real exchange rate.
-    if (agreement.currency !== "DEMO_USDT") {
-      return send(400, { error: "Unsupported demo currency" });
-    }
-
-    const amountPDAI =
-      Math.floor(Math.round(agreement.price * 100) / 2) / 100;
-
-    if (!Number.isSafeInteger(amountPDAI) || amountPDAI <= 0) {
-      return send(400, { error: "Invalid PDAI amount" });
-    }
-
-    try {
-      const { getMockMilestoneReceipt } =
-        await import("./mockSettlement.js");
-
-      if (await getMockMilestoneReceipt(agreement.id, 1)) {
-        return send(409, { error: "Milestone already mock-paid" });
+      if (!(await previousMilestoneSettled(agreement, milestoneId))) {
+        return send(409, {
+          error: "Milestone 1 must settle on RGB first",
+        });
       }
 
       const {
@@ -704,9 +753,9 @@ const server = createServer(async (req, res) => {
 
       const result = await withRealRgbPreparationLock(
         agreement.id,
-        1,
+        milestoneId,
         async () => {
-          if (hasRealRgbMilestoneIntent(agreement.id, 1)) {
+          if (hasRealRgbMilestoneIntent(agreement.id, milestoneId)) {
             return {
               code: 409,
               body: { error: "Existing RGB intent; reconcile first" },
@@ -757,7 +806,7 @@ const server = createServer(async (req, res) => {
 
           const intent = await prepareRealRgbMilestone({
             agreementId: agreement.id,
-            milestoneId: 1,
+            milestoneId,
             amountPDAI,
             bobInvoice: bob.invoice,
           });
@@ -771,7 +820,7 @@ const server = createServer(async (req, res) => {
             body: {
               mode: "real_rgb_preparation",
               agreementId: agreement.id,
-              milestoneId: 1,
+              milestoneId,
               amountPDAI,
               status: intent.status,
               recipientId: intent.recipientId,
@@ -786,83 +835,49 @@ const server = createServer(async (req, res) => {
       console.error("RGB preparation failed:", error);
       return send(503, {
         error: "Preparation failed; inspect existing intent before retry",
+        detail: errorDetail(error),
       });
     }
   }
 
-  // REAL RGB MILESTONE SUBMISSION
+  // REAL RGB MILESTONE SUBMISSION: Alice pays Bob's invoice.
   if (
     req.method === "POST" &&
     path === "/api/payment/rgb/submit"
   ) {
-    if (identifyRole(req.headers.authorization) !== "client") {
-      return send(401, { error: "Client authorization required" });
-    }
-
-    const agreement = getAgreement();
-    if (!agreement || !approvals.client || !approvals.freelancer) {
-      return send(403, { error: "Both approvals required" });
-    }
-
     // Disabled by default. No real send without explicit enablement.
     if (process.env.ENABLE_REAL_PDAI_SEND !== "YES") {
       return send(503, { error: "Real RGB sending is disabled" });
     }
 
-    const contentType = req.headers["content-type"] ?? "";
-    if (contentType.split(";")[0]?.trim().toLowerCase() !== "application/json") {
-      return send(415, { error: "Expected JSON" });
-    }
+    const checked = await readRgbMilestoneRequest(
+      req, send, "AUTHORIZE_REAL_PDAI_PAYMENT"
+    );
+    if (!checked) return;
 
-    let raw = "";
-    for await (const chunk of req) {
-      raw += chunk.toString();
-      if (raw.length > 2048) {
-        return send(413, { error: "Request too large" });
-      }
-    }
-
-    let data;
-    try {
-      data = JSON.parse(raw);
-    } catch {
-      return send(400, { error: "Invalid JSON" });
-    }
-
-    if (
-      data?.agreementId !== agreement.id ||
-      data?.milestoneId !== 1 ||
-      data?.confirm !== "AUTHORIZE_REAL_PDAI_PAYMENT" ||
-      agreement.currency !== "DEMO_USDT"
-    ) {
-      return send(400, { error: "Invalid real RGB submission" });
-    }
+    const { agreement, milestoneId, amountPDAI } = checked;
 
     try {
-      const { getMockMilestoneReceipt } =
-        await import("./mockSettlement.js");
-
-      if (await getMockMilestoneReceipt(agreement.id, 1)) {
-        return send(409, { error: "Milestone already mock-paid" });
+      if (!(await previousMilestoneSettled(agreement, milestoneId))) {
+        return send(409, {
+          error: "Milestone 1 must settle on RGB first",
+        });
       }
 
       const { submitPreparedRgbMilestone } =
         await import("./realRgbSender.js");
 
-      const expectedAmountPDAI =
-        Math.floor(Math.round(agreement.price * 100) / 2) / 100;
-
       const result = await submitPreparedRgbMilestone(
         agreement.id,
-        1,
-        data.confirm,
-        expectedAmountPDAI
+        milestoneId,
+        "AUTHORIZE_REAL_PDAI_PAYMENT",
+        amountPDAI
       );
 
       return send(202, {
         mode: "real_rgb",
-        milestoneId: 1,
-        amountPDAI: 35,
+        milestoneId,
+        amountPDAI,
         settled: false,
         ...result,
       });
@@ -870,6 +885,7 @@ const server = createServer(async (req, res) => {
       console.error("RGB submit requires inspection:", error);
       return send(409, {
         error: "Inspect payment intent and both nodes before retrying",
+        detail: errorDetail(error),
       });
     }
   }
@@ -1006,6 +1022,134 @@ const server = createServer(async (req, res) => {
     });
   }
 
+  // RGB NODE HEALTH - READ ONLY
+  if (req.method === "GET" && path === "/api/rgb/nodes") {
+    try {
+      const { getNodesOverview } = await import("./rgbNodes.js");
+      return send(200, await getNodesOverview());
+    } catch (error) {
+      console.error("RGB node overview failed:", error);
+      return send(503, { error: "RGB nodes unavailable" });
+    }
+  }
+
+  // RECENT PDAI TRANSFERS ON BOTH NODES - READ ONLY
+  if (req.method === "GET" && path === "/api/rgb/transfers") {
+    try {
+      const { getRecentTransfers } = await import("./rgbNodes.js");
+      return send(200, await getRecentTransfers());
+    } catch (error) {
+      console.error("RGB transfer list failed:", error);
+      return send(503, { error: "RGB transfers unavailable" });
+    }
+  }
+
+  // WHICH PARTY A TOKEN BELONGS TO - NO SIDE EFFECTS
+  if (req.method === "GET" && path === "/api/session/role") {
+    return send(200, { role: identifyRole(req.headers.authorization) });
+  }
+
+  // FREELANCER QUOTE -> LOCAL QVAC -> NEGOTIATION
+  // The verified price becomes the freelancer's opening ask and
+  // the client's estimate of the freelancer's floor.
+  if (req.method === "POST" && path === "/api/negotiation/quote") {
+    const contentType = req.headers["content-type"] ?? "";
+    if (!/^application\/json(?:;|$)/i.test(contentType)) {
+      return send(415, { error: "Expected JSON" });
+    }
+
+    let raw = "";
+    for await (const chunk of req) {
+      raw += chunk.toString();
+      if (raw.length > 2048) {
+        return send(413, { error: "Message too large" });
+      }
+    }
+
+    let message: string;
+    try {
+      const data = JSON.parse(raw);
+      message = typeof data?.message === "string" ? data.message.trim() : "";
+    } catch {
+      return send(400, { error: "Invalid JSON" });
+    }
+
+    if (!message || message.length > 500) {
+      return send(400, { error: "Write the freelancer's quote (1-500 characters)" });
+    }
+
+    if (currentRound !== 0 || getAgreement()) {
+      return send(409, {
+        error: "The quote can only be set before round 1; reset to start a new deal",
+      });
+    }
+
+    try {
+      const { readVerifiedQuote } =
+        await import("./qvacNegotiationPreview.js");
+
+      const quote = await readVerifiedQuote(message);
+
+      // The model call is slow; the negotiation may have moved on.
+      if (currentRound !== 0) {
+        return send(409, { error: "Negotiation already started" });
+      }
+
+      // Keeps every deal payable as two whole-PDAI milestones.
+      const usable =
+        quote.price !== null && quote.price >= 5 && quote.price <= 10000;
+
+      signal = {
+        source: "qvac",
+        message,
+        askingPrice: quote.qvacPrice,
+        verified: usable,
+        estimatedFloor: usable ? Math.round(quote.price! * 0.8) : null,
+        confidence: usable ? 0.8 : 0,
+        fromRound: 1,
+        basis: usable ? quote.basis : null,
+      };
+      approvals = { client: false, freelancer: false };
+      approvedAgreementId = null;
+      persistState();
+
+      return send(200, {
+        qvacPrice: quote.qvacPrice,
+        verified: usable,
+        state: getPublicState(),
+      });
+    } catch (error) {
+      console.error("QVAC quote failed:", error);
+      return send(503, {
+        error: "Local QVAC could not read the quote",
+        detail: errorDetail(error),
+      });
+    }
+  }
+
+  // NEGOTIATION HISTORY: only offers already made, never future ones.
+  if (req.method === "GET" && path === "/api/negotiation/history") {
+    const rounds = [];
+
+    for (let round = 0; round <= currentRound; round++) {
+      rounds.push({ round, ...getOffers(round) });
+    }
+
+    const agreement = getAgreement();
+
+    return send(200, {
+      totalRounds,
+      rounds,
+      agreement: agreement
+        ? {
+            round: currentRound,
+            price: agreement.price,
+            acceptedBy: agreement.acceptedBy,
+          }
+        : null,
+    });
+  }
+
   // GET NEGOTIATION
   if (
     req.method === "GET" &&
@@ -1037,6 +1181,8 @@ persistState();
   ) {
     currentRound = 0;
     sessionId = randomUUID();
+    signal = null;
+    approvedAgreementId = null;
 
     approvals = {
       client: false,
@@ -1118,9 +1264,15 @@ persistState();
       });
     }
 
+    // Approving different terms starts a fresh pair of approvals.
+    if (approvedAgreementId !== agreement.id) {
+      approvals = { client: false, freelancer: false };
+      approvedAgreementId = agreement.id;
+    }
+
     // A repeated approval is harmless.
     approvals[role] = true;
-persistState();
+    persistState();
 
     return send(200, getPublicState());
   }
