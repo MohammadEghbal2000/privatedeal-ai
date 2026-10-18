@@ -10,6 +10,7 @@ import "./premium-overrides.css";
 import ProofLaboratory from "./ProofLaboratory";
 import type { ProofReport } from "./proofEngine";
 import AgentArena, { type LiveArena } from "./AgentArena";
+import BatchPayPanel from "./BatchPayPanel";
 import {
   liveMessages,
   liveSettlement,
@@ -356,6 +357,17 @@ function App() {
             studioDefaults={live ? liveStudioDefaults(classic) : undefined}
           />
         </div>
+
+        {live && agreement && split && liveArena?.approved && (
+          <div style={{ marginBottom: 36 }}>
+            <BatchPayPanel
+              agreementId={agreement.id}
+              amounts={split}
+              payment={payment}
+              onChanged={() => void classicDeal.refresh()}
+            />
+          </div>
+        )}
 
         <div className="section-heading" id="settlement">
           <div>

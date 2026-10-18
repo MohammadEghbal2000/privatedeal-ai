@@ -22,7 +22,7 @@ const DIR = "/workspaces/.privatedeal-rgb-payments";
 const PROXY =
   "rpcs://proxy.iriswallet.com/0.2/json-rpc";
 
-type Intent = {
+export type Intent = {
   agreementId: string;
   milestoneId: 1 | 2;
   amountPDAI: number;
@@ -33,7 +33,7 @@ type Intent = {
   createdAt: string;
 };
 
-function intentPath(
+export function intentPath(
   agreementId: string,
   milestoneId: 1 | 2
 ) {
@@ -44,7 +44,7 @@ function intentPath(
   return join(DIR, `${hash}.json`);
 }
 
-function persist(path: string, data: Intent) {
+export function persist(path: string, data: Intent) {
   const temp = `${path}.${randomUUID()}.tmp`;
 
   const fd = openSync(temp, "wx", 0o600);
@@ -62,7 +62,7 @@ function persist(path: string, data: Intent) {
   renameSync(temp, path);
 }
 
-async function listTransfers(port: number) {
+export async function listTransfers(port: number) {
   const response = await fetch(
     `http://127.0.0.1:${port}/listtransfers`,
     {

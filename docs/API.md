@@ -121,6 +121,26 @@ Body: `{ "agreementId": "<id>", "milestoneId": 1 | 2, "confirm": "<word>" }`
 Milestone 2 is refused until milestone 1 is settled. A milestone that was
 paid, or attempted, can never be submitted again.
 
+## RGB batch payment (both milestones, one transaction)
+
+Pays both milestones with ONE `sendrgb` call (two recipients, one Bitcoin
+transaction). Same protections as a single milestone: client key, both
+approvals, `ENABLE_REAL_PDAI_SEND=YES`, a payment record for each
+milestone before Alice is contacted, a lock per milestone, and an
+uncertain send is never retried (both milestones become
+`needs_reconciliation`). Body: `{ "agreementId": "<id>", "confirm": "<word>" }`
+(no `milestoneId`).
+
+| Route | `confirm` | Effect |
+|---|---|---|
+| `POST /api/payment/rgb/batch/prepare` | `PREPARE_REAL_PDAI_BATCH` | Bob creates both invoices; nothing is sent. A milestone already prepared is reused; one already sent or attempted blocks the batch (409) |
+| `POST /api/payment/rgb/batch/submit` | `AUTHORIZE_REAL_PDAI_BATCH` | Alice pays both invoices in one transaction. Needs both prepared, not expiring within 10 minutes, and Alice's spendable PDAI for the **total** |
+
+`submit` answers `202 { txid, recipients, settled: false }`. Both
+milestones then carry the same `txid`; poll `GET /api/payment/rgb/status`
+and `POST /api/payment/rgb/sync` as for single milestones. The deal is
+settled only when both nodes report `Settled` for both recipients.
+
 ## Read-only node views
 
 ### `GET /api/rgb/nodes`

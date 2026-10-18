@@ -34,20 +34,41 @@ DealOS reads the classic backend through the dashboard's `/api` proxy
 | RGB Command Center (Live) | each milestone's RGB transfer as a recipient, its node status and txid, from `GET /api/payment/rgb/status` |
 | DealGraph studio | prefilled with the agreement ID, the PDAI asset, Bob's invoice recipient IDs (once created) and the milestone amounts |
 | Dual-ACK settlement rail | both approvals, each milestone's RGB status, settlement and txids |
+| Batch payment panel | prepare, pay and sync the one-transaction DealGraph batch (client key) |
 
 The proof laboratory and the acceptance criteria stay DealOS's own
 (local, deterministic).
 
+## Paying the DealGraph batch
+
+Once both people have approved, DealOS shows **Pay both milestones in one
+RGB transaction**: Alice pays Bob's two milestone invoices with a single
+`sendrgb` call (two recipients, one Bitcoin transaction). Three steps:
+
+1. **Prepare both invoices**: Bob creates them; nothing is sent.
+2. **Pay**: tick the confirmation, then Alice sends both at once.
+3. **Sync nodes** until both nodes report `Settled` for both milestones.
+
+The panel asks for the **client key** (the `Client token` the classic
+backend prints at startup; it is read from this tab's classic dashboard
+session if it was pasted there). The key stays in this page's memory.
+
+The payment itself runs in the classic backend
+(`POST /api/payment/rgb/batch/prepare` and `/batch/submit`, see
+[API.md](API.md)) with the same protections as a single milestone.
+
 ## Safety
 
-- DealOS holds no party key. It cannot approve, prepare, pay or reset
-  anything; those stay in the classic dashboard. The only write it makes
-  is advancing a negotiation round, which the classic API allows anyone
-  to do.
+- DealOS can only do what the classic API allows with a client key: it
+  cannot approve, and it cannot pay without the client key, both
+  approvals, the confirmation word and `ENABLE_REAL_PDAI_SEND=YES` on the
+  backend. Without a key it only reads (and can advance a negotiation
+  round, which the classic API allows anyone to do).
 - The payment status is readable only after both people approved the
   agreement, exactly as in the classic API.
-- The DealGraph API stays preview only: it builds and verifies batch
-  plans and never sends.
+- The DealGraph preview API (port 3201) stays preview only: it builds and
+  verifies batch plans and never sends. The payment goes through the
+  classic backend, the only component that talks to the nodes.
 - The DealGraph API accepts only the dashboard's own origin. The Vite
   proxy (`/dealos` → `127.0.0.1:3201`) passes same-origin requests on as
   the local dashboard, so it also works behind Codespaces port

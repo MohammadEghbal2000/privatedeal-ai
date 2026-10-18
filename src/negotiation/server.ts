@@ -271,16 +271,19 @@ function errorDetail(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-// SHARED CHECKS FOR REAL RGB MILESTONE ACTIONS
+// SHARED CHECKS FOR REAL RGB PAYMENT ACTIONS
+// Client key, both approvals, the demo currency and a small JSON body.
 // Returns null after sending an error response.
-async function readRgbMilestoneRequest(
+async function readRgbPaymentBody(
   req: IncomingMessage,
-  send: Send,
-  confirm: string
+  send: Send
 ): Promise<{
   agreement: ApprovedAgreement;
-  milestoneId: 1 | 2;
-  amountPDAI: number;
+  data: {
+    agreementId?: string;
+    milestoneId?: number;
+    confirm?: string;
+  };
 } | null> {
   if (identifyRole(req.headers.authorization) !== "client") {
     send(401, { error: "Client authorization required" });
@@ -327,6 +330,24 @@ async function readRgbMilestoneRequest(
     return null;
   }
 
+  return { agreement, data };
+}
+
+// SHARED CHECKS FOR REAL RGB MILESTONE ACTIONS
+// Returns null after sending an error response.
+async function readRgbMilestoneRequest(
+  req: IncomingMessage,
+  send: Send,
+  confirm: string
+): Promise<{
+  agreement: ApprovedAgreement;
+  milestoneId: 1 | 2;
+  amountPDAI: number;
+} | null> {
+  const body = await readRgbPaymentBody(req, send);
+  if (!body) return null;
+
+  const { agreement, data } = body;
   const milestoneId = data?.milestoneId;
 
   if (
@@ -360,6 +381,147 @@ async function readRgbMilestoneRequest(
   }
 
   return { agreement, milestoneId, amountPDAI };
+}
+
+// SHARED CHECKS FOR THE DEALGRAPH BATCH (both milestones at once)
+// Returns null after sending an error response.
+async function readRgbBatchRequest(
+  req: IncomingMessage,
+  send: Send,
+  confirm: string
+): Promise<{
+  agreement: ApprovedAgreement;
+  amounts: [number, number];
+} | null> {
+  const body = await readRgbPaymentBody(req, send);
+  if (!body) return null;
+
+  const { agreement, data } = body;
+
+  if (
+    data?.agreementId !== agreement.id ||
+    data?.milestoneId !== undefined ||
+    data?.confirm !== confirm
+  ) {
+    send(400, { error: "Invalid agreement or confirmation" });
+    return null;
+  }
+
+  const { pdaiMilestoneAmounts } =
+    await import("./rgbDealStatus.js");
+
+  let amounts: [number, number];
+  try {
+    amounts = pdaiMilestoneAmounts(agreement.price);
+  } catch (error) {
+    send(400, { error: errorDetail(error) });
+    return null;
+  }
+
+  const { getMockMilestoneReceipt } =
+    await import("./mockSettlement.js");
+
+  for (const milestoneId of [1, 2] as const) {
+    if (await getMockMilestoneReceipt(agreement.id, milestoneId)) {
+      send(409, { error: `Milestone ${milestoneId} already mock-paid` });
+      return null;
+    }
+  }
+
+  return { agreement, amounts };
+}
+
+// BOB CREATES ONE MILESTONE INVOICE AND THE PAYMENT INTENT IS RECORDED.
+// Nothing is sent. Used by single milestones and by the batch.
+async function prepareRgbMilestoneInvoice(
+  agreement: ApprovedAgreement,
+  milestoneId: 1 | 2,
+  amountPDAI: number
+): Promise<{ code: number; body: Record<string, unknown> }> {
+  const {
+    withRealRgbPreparationLock,
+    hasRealRgbMilestoneIntent,
+    prepareRealRgbMilestone,
+  } = await import("./realRgbSettlement.js");
+
+  return withRealRgbPreparationLock(
+    agreement.id,
+    milestoneId,
+    async () => {
+      if (hasRealRgbMilestoneIntent(agreement.id, milestoneId)) {
+        return {
+          code: 409,
+          body: { error: "Existing RGB intent; reconcile first" },
+        };
+      }
+
+      const assetId =
+        "rgb:c7L6N5Oa-3VOzRHR-r_V8wpW-N3kl35E-1Nc8a4g-EZwQ9dQ";
+
+      const response = await fetch(
+        "http://127.0.0.1:3002/rgbinvoice",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            min_confirmations: 1,
+            asset_id: assetId,
+            assignment: {
+              type: "Fungible",
+              value: amountPDAI,
+            },
+            expiration_timestamp:
+              Math.floor(Date.now() / 1000) + 3600,
+            witness: true,
+            transport_endpoints: [
+              "rpcs://proxy.iriswallet.com/0.2/json-rpc",
+            ],
+          }),
+          signal: AbortSignal.timeout(30000),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Bob invoice request failed");
+      }
+
+      const bob = await response.json() as {
+        invoice?: string;
+        recipient_id?: string;
+      };
+
+      if (
+        typeof bob.invoice !== "string" ||
+        typeof bob.recipient_id !== "string"
+      ) {
+        throw new Error("Invalid Bob invoice response");
+      }
+
+      const intent = await prepareRealRgbMilestone({
+        agreementId: agreement.id,
+        milestoneId,
+        amountPDAI,
+        bobInvoice: bob.invoice,
+      });
+
+      if (intent.recipientId !== bob.recipient_id) {
+        throw new Error("Bob recipient mismatch");
+      }
+
+      return {
+        code: 200,
+        body: {
+          mode: "real_rgb_preparation",
+          agreementId: agreement.id,
+          milestoneId,
+          amountPDAI,
+          status: intent.status,
+          recipientId: intent.recipientId,
+          paymentSent: false,
+        },
+      };
+    }
+  );
 }
 
 // Milestone 2 is paid only after milestone 1 settles on RGB.
@@ -745,89 +907,8 @@ const server = createServer(async (req, res) => {
         });
       }
 
-      const {
-        withRealRgbPreparationLock,
-        hasRealRgbMilestoneIntent,
-        prepareRealRgbMilestone,
-      } = await import("./realRgbSettlement.js");
-
-      const result = await withRealRgbPreparationLock(
-        agreement.id,
-        milestoneId,
-        async () => {
-          if (hasRealRgbMilestoneIntent(agreement.id, milestoneId)) {
-            return {
-              code: 409,
-              body: { error: "Existing RGB intent; reconcile first" },
-            };
-          }
-
-          const assetId =
-            "rgb:c7L6N5Oa-3VOzRHR-r_V8wpW-N3kl35E-1Nc8a4g-EZwQ9dQ";
-
-          const response = await fetch(
-            "http://127.0.0.1:3002/rgbinvoice",
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                min_confirmations: 1,
-                asset_id: assetId,
-                assignment: {
-                  type: "Fungible",
-                  value: amountPDAI,
-                },
-                expiration_timestamp:
-                  Math.floor(Date.now() / 1000) + 3600,
-                witness: true,
-                transport_endpoints: [
-                  "rpcs://proxy.iriswallet.com/0.2/json-rpc",
-                ],
-              }),
-              signal: AbortSignal.timeout(30000),
-            }
-          );
-
-          if (!response.ok) {
-            throw new Error("Bob invoice request failed");
-          }
-
-          const bob = await response.json() as {
-            invoice?: string;
-            recipient_id?: string;
-          };
-
-          if (
-            typeof bob.invoice !== "string" ||
-            typeof bob.recipient_id !== "string"
-          ) {
-            throw new Error("Invalid Bob invoice response");
-          }
-
-          const intent = await prepareRealRgbMilestone({
-            agreementId: agreement.id,
-            milestoneId,
-            amountPDAI,
-            bobInvoice: bob.invoice,
-          });
-
-          if (intent.recipientId !== bob.recipient_id) {
-            throw new Error("Bob recipient mismatch");
-          }
-
-          return {
-            code: 200,
-            body: {
-              mode: "real_rgb_preparation",
-              agreementId: agreement.id,
-              milestoneId,
-              amountPDAI,
-              status: intent.status,
-              recipientId: intent.recipientId,
-              paymentSent: false,
-            },
-          };
-        }
+      const result = await prepareRgbMilestoneInvoice(
+        agreement, milestoneId, amountPDAI
       );
 
       return send(result.code, result.body);
@@ -885,6 +966,117 @@ const server = createServer(async (req, res) => {
       console.error("RGB submit requires inspection:", error);
       return send(409, {
         error: "Inspect payment intent and both nodes before retrying",
+        detail: errorDetail(error),
+      });
+    }
+  }
+
+  // DEALGRAPH BATCH PREPARATION: Bob creates both milestone invoices.
+  // Nothing is sent. A milestone already prepared is reused; one that was
+  // sent or attempted on its own blocks the batch.
+  if (
+    req.method === "POST" &&
+    path === "/api/payment/rgb/batch/prepare"
+  ) {
+    const checked = await readRgbBatchRequest(
+      req, send, "PREPARE_REAL_PDAI_BATCH"
+    );
+    if (!checked) return;
+
+    const { agreement, amounts } = checked;
+
+    try {
+      const { getRgbDealStatus } =
+        await import("./rgbDealStatus.js");
+
+      const deal = await getRgbDealStatus(agreement.id, agreement.price);
+      const blocked = deal.milestones.find(
+        m => m.status !== "not_prepared" && m.status !== "prepared"
+      );
+
+      if (blocked) {
+        return send(409, {
+          error: `Milestone ${blocked.milestoneId} is already ${blocked.status.replace(/_/g, " ")}; finish it one milestone at a time`,
+        });
+      }
+
+      const milestones: Record<string, unknown>[] = [];
+
+      for (const m of deal.milestones) {
+        if (m.status === "prepared") {
+          milestones.push({
+            milestoneId: m.milestoneId,
+            amountPDAI: m.amountPDAI,
+            status: "prepared",
+          });
+          continue;
+        }
+
+        const result = await prepareRgbMilestoneInvoice(
+          agreement, m.milestoneId, amounts[m.milestoneId - 1]!
+        );
+
+        if (result.code !== 200) {
+          return send(result.code, result.body);
+        }
+
+        milestones.push(result.body);
+      }
+
+      return send(200, {
+        mode: "real_rgb_batch_preparation",
+        agreementId: agreement.id,
+        totalPDAI: amounts[0] + amounts[1],
+        milestones,
+        paymentSent: false,
+      });
+    } catch (error) {
+      console.error("RGB batch preparation failed:", error);
+      return send(503, {
+        error: "Batch preparation failed; inspect existing intents before retry",
+        detail: errorDetail(error),
+      });
+    }
+  }
+
+  // DEALGRAPH BATCH SUBMISSION: Alice pays both invoices in ONE
+  // RGB transaction (two recipients, one Bitcoin transaction).
+  if (
+    req.method === "POST" &&
+    path === "/api/payment/rgb/batch/submit"
+  ) {
+    // Disabled by default. No real send without explicit enablement.
+    if (process.env.ENABLE_REAL_PDAI_SEND !== "YES") {
+      return send(503, { error: "Real RGB sending is disabled" });
+    }
+
+    const checked = await readRgbBatchRequest(
+      req, send, "AUTHORIZE_REAL_PDAI_BATCH"
+    );
+    if (!checked) return;
+
+    const { agreement, amounts } = checked;
+
+    try {
+      const { submitRgbBatch } =
+        await import("./realRgbBatch.js");
+
+      const result = await submitRgbBatch(
+        agreement.id,
+        amounts,
+        "AUTHORIZE_REAL_PDAI_BATCH"
+      );
+
+      return send(202, {
+        mode: "real_rgb_batch",
+        totalPDAI: amounts[0] + amounts[1],
+        settled: false,
+        ...result,
+      });
+    } catch (error) {
+      console.error("RGB batch submit requires inspection:", error);
+      return send(409, {
+        error: "Inspect both payment intents and both nodes before retrying",
         detail: errorDetail(error),
       });
     }
