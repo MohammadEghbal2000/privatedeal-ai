@@ -164,6 +164,7 @@ export default function App() {
             );
           })}
         </div>
+        <a className="btn btn-ghost" style={{ minHeight: 36 }} href="#/agents">Agent chat (new) →</a>
         <button className="btn btn-secondary" style={{ minHeight: 36 }} onClick={() => setConfirmNew(true)}>
           New deal
         </button>

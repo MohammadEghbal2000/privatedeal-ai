@@ -1,0 +1,196 @@
+/* Agent chat page. Builds on the classic design tokens in index.css:
+   client = blue, freelancer = orange (validated pair, light and dark). */
+
+.ac-swatch {
+  display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+  margin-right: 8px; flex: none;
+  &.is-client { background: var(--client); }
+  &.is-freelancer { background: var(--freelancer); }
+}
+
+.ac-ok { color: var(--good-text); font-weight: 600; }
+.ac-bad { color: var(--critical-text); font-weight: 600; }
+.ac-warn { color: var(--critical-text); font-size: 0.85rem; font-weight: 600; }
+
+/* ---------- Setup ---------- */
+
+.ac-setup-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+@container (max-width: 680px) {
+  .ac-setup-grid { grid-template-columns: 1fr; }
+}
+
+.ac-agent-setup {
+  margin: 0; min-width: 0; display: grid; gap: 12px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px 16px;
+  border-top: 3px solid var(--border);
+  &.is-client { border-top-color: var(--client); }
+  &.is-freelancer { border-top-color: var(--freelancer); }
+  & legend { display: flex; align-items: center; font-weight: 700; padding: 0 6px; }
+  &:disabled { opacity: 0.7; }
+}
+
+.ac-slider {
+  display: grid; grid-template-columns: 1fr 52px; gap: 2px 10px; align-items: center;
+  & label { grid-column: 1 / -1; font-size: 0.85rem; font-weight: 600; color: var(--text-2); }
+  & input[type="range"] { width: 100%; accent-color: var(--accent); }
+}
+
+.ac-weight { font-variant-numeric: tabular-nums; font-weight: 700; text-align: right; }
+
+.ac-check {
+  display: flex; gap: 8px; align-items: flex-start; font-size: 0.9rem; color: var(--text-2);
+  & input { margin-top: 3px; accent-color: var(--accent); }
+}
+
+.ac-global { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+
+.ac-agent-setup select, .ac-global select, #ac-runs {
+  font: inherit; color: var(--text); background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; min-height: 40px;
+  &:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
+}
+
+/* ---------- Chat panes ---------- */
+
+.ac-chats { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+.ac-chat {
+  display: grid; grid-template-rows: auto 1fr; padding: 0; overflow: hidden;
+  border-top: 3px solid var(--border);
+  &.is-client { border-top-color: var(--client); }
+  &.is-freelancer { border-top-color: var(--freelancer); }
+}
+
+.ac-chat-head {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+  & h2 { font-size: 1rem; }
+}
+
+.ac-messages {
+  list-style: none; margin: 0; padding: 14px 16px; display: grid; gap: 12px; align-content: start;
+  height: 460px; overflow-y: auto; overscroll-behavior: contain;
+  background: var(--surface-2);
+}
+
+.ac-empty { align-self: center; text-align: center; padding: 40px 0; }
+
+.ac-msg {
+  display: grid; gap: 4px; max-width: 88%;
+  &.is-mine { justify-self: end; justify-items: end; }
+  &.is-theirs { justify-self: start; }
+}
+
+.ac-bubble {
+  border-radius: 14px; padding: 10px 12px; display: grid; gap: 6px;
+  background: var(--surface); border: 1px solid var(--border);
+  .is-mine > & { border-bottom-right-radius: 4px; }
+  .is-theirs > & { border-bottom-left-radius: 4px; }
+  .is-client > & { box-shadow: inset 3px 0 0 var(--client); }
+  .is-freelancer > & { box-shadow: inset 3px 0 0 var(--freelancer); }
+  .is-mine.is-client > & { background: var(--client-wash); }
+  .is-mine.is-freelancer > & { background: var(--freelancer-wash); }
+  .is-accept > & { border-color: color-mix(in oklch, var(--good) 55%, transparent); }
+  .is-walk > & { border-style: dashed; }
+  & p { font-size: 0.93rem; }
+}
+
+.ac-terms { font-size: 0.78rem !important; color: var(--text-3); }
+
+.ac-meta {
+  font-size: 0.74rem; color: var(--text-3); display: flex; gap: 8px; flex-wrap: wrap;
+  & strong { color: var(--text-2); }
+}
+
+.ac-typing { display: flex; align-items: center; gap: 8px; }
+
+.ac-dots {
+  display: inline-flex; gap: 4px; padding: 10px 12px; border-radius: 14px;
+  background: var(--surface); border: 1px solid var(--border);
+  & i { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); animation: ac-blink 1.2s infinite; }
+  & i:nth-child(2) { animation-delay: 0.2s; }
+  & i:nth-child(3) { animation-delay: 0.4s; }
+}
+
+@keyframes ac-blink {
+  0%, 80%, 100% { opacity: 0.25; }
+  40% { opacity: 1; }
+}
+
+/* ---------- Analysis ---------- */
+
+.ac-analysis { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+
+/* After both grid definitions, so it wins on narrow screens. */
+@media (max-width: 860px) {
+  .ac-chats, .ac-analysis { grid-template-columns: 1fr; }
+}
+
+.ac-figure { margin: 0; display: grid; gap: 8px; }
+.ac-figure .legend { flex-wrap: wrap; }
+
+.ac-chart .tooltip { display: grid; gap: 2px; }
+
+.ac-key-line {
+  &.is-client { background: var(--client); }
+  &.is-freelancer { background: var(--freelancer); }
+  &.is-frontier { background: var(--text-2); }
+}
+.legend .ac-key-ring { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--text); background: transparent; }
+.legend .ac-key-deal { width: 10px; height: 10px; border-radius: 50%; background: var(--good); }
+
+.chart .ac-cloud circle { fill: var(--text-3); opacity: 0.28; }
+.chart .ac-frontier { fill: none; stroke: var(--text-2); stroke-width: 1.5; stroke-linejoin: round; }
+.chart .ac-rv { stroke: var(--border-strong); stroke-width: 1; stroke-dasharray: 4 4; }
+.chart .ac-bid-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; opacity: 0.85; }
+.chart .ac-nash { fill: none; stroke: var(--text); stroke-width: 2; }
+.chart .ac-deal { fill: var(--good); stroke: var(--surface); stroke-width: 3; }
+
+.ac-belief {
+  display: grid; gap: 8px;
+  & h3 { font-size: 0.9rem; display: flex; align-items: center; }
+}
+
+.ac-belief-rows {
+  list-style: none; margin: 0; padding: 0; display: grid; gap: 6px;
+  & li { display: grid; grid-template-columns: 76px 1fr 104px; gap: 10px; align-items: center; font-size: 0.85rem; }
+}
+
+.ac-belief-label { color: var(--text-2); font-weight: 600; }
+.ac-belief-value { text-align: right; font-variant-numeric: tabular-nums; }
+
+.ac-track {
+  position: relative; height: 12px; border-radius: 4px; background: var(--surface-3);
+}
+
+.ac-fill {
+  position: absolute; inset: 0 auto 0 0; border-radius: 4px;
+  transition: width 0.4s ease;
+  &.is-client { background: var(--client); }
+  &.is-freelancer { background: var(--freelancer); }
+}
+
+/* The true weight: an ink tick across the bar. */
+.ac-truth {
+  position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px;
+  background: var(--text); border-radius: 1px; box-shadow: 0 0 0 1px var(--surface);
+}
+
+/* ---------- Result and comparison ---------- */
+
+.ac-stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 14px 0 0;
+  & div { background: var(--surface-2); border-radius: var(--radius-sm); padding: 10px 12px; }
+  & dt { font-size: 0.78rem; color: var(--text-3); }
+  & dd { margin: 2px 0 0; font-size: 1.15rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+}
+
+table.ac-compare {
+  & th[scope="row"] { color: var(--text); font-weight: 600; white-space: nowrap; }
+  & td.ac-best { font-weight: 800; color: var(--text); }
+}
+
+@media (forced-colors: active) {
+  .ac-swatch, .ac-fill, .ac-truth, .ac-dots i { forced-color-adjust: none; }
+}

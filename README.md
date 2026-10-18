@@ -239,6 +239,20 @@ RGB nodes:
 
 The RGB nodes must be running and their wallets unlocked.
 
+### Agent Chat with Opponent Learning (second version)
+
+A separate page, `http://localhost:5173/#/agents`, where the client's and
+the freelancer's AI agents negotiate price, deadline and revisions by
+chat. The local QVAC model writes and reads every message, and each agent
+learns the other's priorities with a Bayesian opponent model. The classic
+flow above is unchanged; the agent chat has its own server:
+
+```bash
+npm run agents   # port 3200, then open /#/agents in the dashboard
+```
+
+Design, API and evaluation: [docs/AGENT_CHAT.md](docs/AGENT_CHAT.md).
+
 ### Important Limitations
 
 - QVAC extracts and verifies the price; Boulware determines offers.

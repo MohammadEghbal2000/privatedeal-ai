@@ -11,6 +11,11 @@ export default defineConfig({
         target: "http://127.0.0.1:3100",
         changeOrigin: true,
       },
+      // Agent chat server (npm run agents), separate from the deal backend.
+      "/agent-api": {
+        target: "http://127.0.0.1:3200",
+        changeOrigin: true,
+      },
     },
   },
 });

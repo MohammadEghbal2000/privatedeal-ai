@@ -9,6 +9,9 @@
     "start:offline": "tsx src/index.ts --mock --scripted --yes",
     "eval": "tsx src/eval.ts",
     "eval:mock": "tsx src/eval.ts --mock",
+    "agents": "tsx src/agentchat/server.ts",
+    "eval:agents": "tsx src/agentchat/eval.ts",
+    "test:agents": "tsx --test src/agentchat/agentchat.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
