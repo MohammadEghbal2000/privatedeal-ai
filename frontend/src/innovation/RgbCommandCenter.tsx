@@ -22,9 +22,12 @@ type Props = {
   liveLoading?: boolean;
   liveError?: string | null;
   onRefresh?: () => void;
+  // Live mode: start in LIVE and prefill DealGraph from the classic deal.
+  initialMode?: DisplayMode;
+  studioDefaults?: NonNullable<Parameters<typeof DealGraphApiStudio>[0]>["defaults"];
 };
 
-type DisplayMode = "DEMO" | "LIVE";
+export type DisplayMode = "DEMO" | "LIVE";
 
 const DEMO_TXID = "a".repeat(64);
 
@@ -116,6 +119,18 @@ function createDemoState(
   return applyNodeSnapshot(state, records);
 }
 
+// How far a live settlement has got, as an index into STAGES.
+function liveStage(state: SettlementState): number {
+  if (!state.txid) return 0;
+  const order: Record<string, number> = {
+    Initiated: 1, WaitingCounterparty: 2, WaitingSafeHeight: 3,
+    WaitingBroadcast: 3, WaitingConfirmations: 4, Settled: 5
+  };
+  const reached = state.recipients
+    .map(r => (r.nodeStatus ? order[r.nodeStatus] ?? 1 : 1));
+  return Math.min(...reached);
+}
+
 function statusClass(status: string) {
   if (status === "Settled") return "rgbcc-success";
   if (status === "Failed") return "rgbcc-danger";
@@ -132,11 +147,13 @@ export default function RgbCommandCenter({
   liveState = null,
   liveLoading = false,
   liveError = null,
-  onRefresh
+  onRefresh,
+  initialMode = "DEMO",
+  studioDefaults
 }: Props) {
 
   const [mode, setMode] =
-    useState<DisplayMode>("DEMO");
+    useState<DisplayMode>(initialMode);
 
   const [stage, setStage] = useState(0);
 
@@ -223,7 +240,7 @@ export default function RgbCommandCenter({
           : "LIVE MODE — BACKEND-SUPPLIED DATA ONLY"}
       </div>
 
-      <DealGraphApiStudio />
+      <DealGraphApiStudio key={studioDefaults?.dealId ?? "demo"} defaults={studioDefaults} />
 
       <details className="rgbcc-advanced">
         <summary>
@@ -361,7 +378,7 @@ export default function RgbCommandCenter({
               const reached =
                 mode === "DEMO"
                   ? index <= stage
-                  : index === 0 && !!current;
+                  : !!current && index <= liveStage(current);
 
               return (
                 <div

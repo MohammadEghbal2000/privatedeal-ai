@@ -239,6 +239,14 @@ RGB nodes:
 
 The RGB nodes must be running and their wallets unlocked.
 
+### DealOS view (innovation module)
+
+`http://localhost:5173/innovation.html` shows the classic deal live in
+DealOS: the negotiation, the agreement and approvals, both RGB nodes and
+each milestone's RGB payment. It only reads (and can advance rounds);
+approving and paying stay here. Start its preview-only DealGraph API with
+`npm run dealos`. Details: [docs/DEALOS.md](docs/DEALOS.md).
+
 ### Important Limitations
 
 - QVAC extracts and verifies the price; Boulware determines offers.

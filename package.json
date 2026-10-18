@@ -9,6 +9,8 @@
     "start:offline": "tsx src/index.ts --mock --scripted --yes",
     "eval": "tsx src/eval.ts",
     "eval:mock": "tsx src/eval.ts --mock",
+    "dealos": "node dealos-rgb-server/apiServer.mjs",
+    "test:dealos": "node --test dealos-rgb-server/*.test.mjs frontend/src/innovation/*.test.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

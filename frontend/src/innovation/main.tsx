@@ -9,7 +9,14 @@ import "./theatreCollapse.css";
 import "./premium-overrides.css";
 import ProofLaboratory from "./ProofLaboratory";
 import type { ProofReport } from "./proofEngine";
-import AgentArena from "./AgentArena";
+import AgentArena, { type LiveArena } from "./AgentArena";
+import {
+  liveMessages,
+  liveSettlement,
+  liveStudioDefaults,
+  milestoneSplit,
+  useClassicDeal,
+} from "./classicBridge";
 
 const negotiation = [
   { agent: "CLIENT", price: 40, message: "I need a clean CSV dataset with verified records." },
@@ -29,6 +36,33 @@ function App() {
   const dealReady = round === negotiation.length;
   const proofReady = verification?.passed === true;
   const canApprove = dealReady && proofReady && !approved;
+
+  // Live mode: the deal running in the classic dashboard, when its
+  // backend answers; otherwise the scripted sample below.
+  const classicDeal = useClassicDeal();
+  const { deal: classic } = classicDeal;
+  const live = classic.connected && classic.negotiation !== null;
+  const liveState = classic.negotiation;
+  const agreement = liveState?.agreement ?? null;
+  const onlineNodes = classic.nodes.filter(n => n.online).length;
+  const messages = live ? liveMessages(classic) : negotiation.slice(0, round);
+  const split = agreement ? milestoneSplit(agreement.price) : null;
+  const payment = classic.payment;
+  const rgbStarted = payment?.milestones.some(m => m.txid) ?? false;
+  const liveArena: LiveArena | null = live && liveState ? {
+    steps: [
+      { offer: 0, event: "Waiting for the agents to open the negotiation" },
+      ...messages.map(m => ({ offer: m.price, event: m.message })),
+    ],
+    round: liveState.round,
+    totalRounds: liveState.totalRounds,
+    complete: liveState.status === "agreed",
+    finished: liveState.status === "rounds_finished",
+    approved: liveState.contractStatus === "approved",
+    settled: payment?.dealSettled ?? false,
+    busy: classicDeal.busy,
+    error: classicDeal.actionError,
+  } : null;
 
 
   useEffect(() => {
@@ -141,11 +175,14 @@ function App() {
 
         <div className="sidebar-bottom">
           <div className="connection-indicator">
-            <span className="status-dot amber" />
-            DEMO ENVIRONMENT
+            <span className={live ? "status-dot" : "status-dot amber"} />
+            {live ? "LIVE · CLASSIC DEAL" : "DEMO ENVIRONMENT"}
           </div>
-          <small>Live RGB node not connected</small>
+          {live
+            ? <small>{onlineNodes}/{classic.nodes.length || 2} RGB nodes online</small>
+            : <small>{classic.error ?? "Live RGB node not connected"}</small>}
           <small>RGB transactions are not simulated as successful.</small>
+          <small><a href="/" style={{ color: "inherit" }}>← Classic dashboard</a></small>
         </div>
       </aside>
 
@@ -153,12 +190,18 @@ function App() {
         <header className="topbar">
           <div className="breadcrumb">WORKSPACE <span>/</span> DEAL COMMAND CENTER</div>
           <div className="top-actions">
-            <span className="live-pill"><span className="status-dot amber" /> LOCAL DEMO MODE</span>
+            <span className="live-pill">
+              <span className={live ? "status-dot" : "status-dot amber"} /> {live ? "LIVE · CLASSIC BACKEND" : "LOCAL DEMO MODE"}
+            </span>
             <div className="avatar">PD</div>
           </div>
         </header>
 
-        <VoidHero round={round} proofReady={proofReady} onNavigate={jump} />
+        <VoidHero round={round} proofReady={proofReady} onNavigate={jump}
+          live={live && liveState ? {
+            negotiation: agreement ? `AGREED · ${agreement.price} PDAI` : `${liveState.round} / ${liveState.totalRounds} ROUNDS`,
+            network: `${onlineNodes} / ${classic.nodes.length || 2} NODES ONLINE`,
+          } : null} />
 
         
         <div id="agent-arena" style={{ scrollMarginTop: 24 }}>
@@ -166,19 +209,33 @@ function App() {
           round={round}
           proofPassed={verification?.passed === true}
           approved={approved}
-          onNext={() => setRound(value => Math.min(negotiation.length, value + 1))}
+          onNext={live ? () => void classicDeal.nextRound() : () => setRound(value => Math.min(negotiation.length, value + 1))}
           onReset={() => {
             setRound(0);
             setApproved(false);
           }}
+          live={liveArena}
         />
         </div>
 
         <div className="stats-grid">
-          <div className="stat-card"><span>DEAL VALUE</span><strong>70 <small>DEMO</small></strong><p>Two milestone agreement</p></div>
-          <div className="stat-card"><span>NEGOTIATION</span><strong>{round}<small> / 6</small></strong><p>Sample agent messages</p></div>
+          {live && liveState ? (
+            <>
+              <div className="stat-card"><span>DEAL VALUE</span><strong>{agreement ? agreement.price : "—"} <small>PDAI</small></strong><p>{agreement ? `Two milestones: ${split![0]} + ${split![1]}` : "Agents still negotiating"}</p></div>
+              <div className="stat-card"><span>NEGOTIATION</span><strong>{liveState.round}<small> / {liveState.totalRounds}</small></strong><p>Live rounds from the classic backend</p></div>
+            </>
+          ) : (
+            <>
+              <div className="stat-card"><span>DEAL VALUE</span><strong>70 <small>DEMO</small></strong><p>Two milestone agreement</p></div>
+              <div className="stat-card"><span>NEGOTIATION</span><strong>{round}<small> / 6</small></strong><p>Sample agent messages</p></div>
+            </>
+          )}
           <div className="stat-card"><span>PROOF ENGINE</span><strong className={proofReady ? "green" : ""}>{proofReady ? "PASSED" : verification ? "FAILED" : "READY"}</strong><p>Local deterministic validation</p></div>
-          <div className="stat-card"><span>RGB NETWORK</span><strong className="amber-text">OFFLINE</strong><p>Awaiting backend integration</p></div>
+          {live ? (
+            <div className="stat-card"><span>RGB NETWORK</span><strong className={onlineNodes === 2 ? "green" : "amber-text"}>{onlineNodes === 2 ? "ONLINE" : `${onlineNodes} / 2 ONLINE`}</strong><p>{payment?.dealSettled ? "Deal settled on RGB" : "Alice and Bob nodes via the classic backend"}</p></div>
+          ) : (
+            <div className="stat-card"><span>RGB NETWORK</span><strong className="amber-text">OFFLINE</strong><p>Awaiting backend integration</p></div>
+          )}
         </div>
 
         <details className="dealos-theatre-details" id="negotiation">
@@ -189,8 +246,9 @@ function App() {
               </span>
               <h3>Negotiation Replay & Deal Compiler</h3>
               <p>
-                Explore the scripted conversation, milestones,
-                and acceptance criteria.
+                {live
+                  ? "The live offers of the classic deal, its milestones and the acceptance criteria."
+                  : "Explore the scripted conversation, milestones, and acceptance criteria."}
               </p>
             </div>
             <div className="dealos-theatre-toggle-right">
@@ -208,34 +266,60 @@ function App() {
             </div>
 
             <div className="chat-flow">
-              {round === 0 && <div className="empty-state">Start the negotiation to explore the sample conversation.</div>}
-              {negotiation.slice(0, round).map((item, index) => (
+              {messages.length === 0 && <div className="empty-state">Start the negotiation to explore the sample conversation.</div>}
+              {messages.map((item, index) => (
                 <div className={`message ${item.agent === "CLIENT" ? "client-message" : "freelancer-message"}`} key={index}>
-                  <span className="message-meta">{item.agent} · ROUND {index + 1}</span>
+                  <span className="message-meta">{item.agent} · {live ? `MESSAGE ${index + 1}` : `ROUND ${index + 1}`}</span>
                   <p>{item.message}</p>
-                  <strong>{item.price} DEMO</strong>
+                  <strong>{item.price} {live ? "PDAI" : "DEMO"}</strong>
                 </div>
               ))}
             </div>
 
             <div className="panel-actions">
-              <button className="primary-button" disabled={dealReady} onClick={() => setRound(value => Math.min(negotiation.length, value + 1))}>
-                {dealReady ? "Agreement reached ✓" : "Next negotiation round →"}
-              </button>
-              <button className="ghost-button" onClick={() => { setRound(0); setApproved(false); }}>Reset</button>
+              {liveArena ? (
+                <button className="primary-button" disabled={liveArena.complete || liveArena.finished || liveArena.busy} onClick={() => void classicDeal.nextRound()}>
+                  {liveArena.complete ? "Agreement reached ✓" : liveArena.finished ? "Rounds finished — no deal" : "Next negotiation round →"}
+                </button>
+              ) : (
+                <>
+                  <button className="primary-button" disabled={dealReady} onClick={() => setRound(value => Math.min(negotiation.length, value + 1))}>
+                    {dealReady ? "Agreement reached ✓" : "Next negotiation round →"}
+                  </button>
+                  <button className="ghost-button" onClick={() => { setRound(0); setApproved(false); }}>Reset</button>
+                </>
+              )}
             </div>
           </section>
 
           <section className="panel contract-panel" id="compiler">
             <div className="panel-title-row"><h3>Deal Compiler</h3><span className="outline-tag">STRUCTURED AGREEMENT</span></div>
             <p className="muted">Converts agreed requirements into deterministic acceptance criteria.</p>
-            <div className="deal-total">
-              <span>AGREED CONTRACT VALUE</span>
-              <strong>70 <small>DEMO</small></strong>
-              <div className="small-note">{dealReady ? "Negotiation replay complete" : "Sample contract · pending negotiation replay"}</div>
-            </div>
-            <div className="milestone"><span>01 <b>Agreement approval</b></span><strong>35 DEMO</strong></div>
-            <div className="milestone"><span>02 <b>Verified delivery</b></span><strong>35 DEMO</strong></div>
+            {live ? (
+              <>
+                <div className="deal-total">
+                  <span>AGREED CONTRACT VALUE</span>
+                  <strong>{agreement ? agreement.price : "—"} <small>PDAI</small></strong>
+                  <div className="small-note">
+                    {agreement
+                      ? `Agreement ${agreement.id.slice(0, 12)}… · ${agreement.approvals.client && agreement.approvals.freelancer ? "approved by both" : "awaiting approvals"}`
+                      : "Live deal · agents still negotiating"}
+                  </div>
+                </div>
+                <div className="milestone"><span>01 <b>Milestone 1</b></span><strong>{split ? `${split[0]} PDAI` : "—"}</strong></div>
+                <div className="milestone"><span>02 <b>Milestone 2</b></span><strong>{split ? `${split[1]} PDAI` : "—"}</strong></div>
+              </>
+            ) : (
+              <>
+                <div className="deal-total">
+                  <span>AGREED CONTRACT VALUE</span>
+                  <strong>70 <small>DEMO</small></strong>
+                  <div className="small-note">{dealReady ? "Negotiation replay complete" : "Sample contract · pending negotiation replay"}</div>
+                </div>
+                <div className="milestone"><span>01 <b>Agreement approval</b></span><strong>35 DEMO</strong></div>
+                <div className="milestone"><span>02 <b>Verified delivery</b></span><strong>35 DEMO</strong></div>
+              </>
+            )}
             <div className="divider" />
             <div className="requirements-title">ACCEPTANCE CRITERIA</div>
             {["At least 100 records", "Unique customer IDs", "Valid email format", "Required CSV columns", "Consistent data structure"].map(item =>
@@ -262,7 +346,15 @@ function App() {
           id="rgb-command-center"
           style={{ scrollMarginTop: 24, marginBottom: 36 }}
         >
-          <RgbCommandCenter />
+          <RgbCommandCenter
+            key={live ? "live" : "demo"}
+            initialMode={live ? "LIVE" : "DEMO"}
+            liveState={liveSettlement(classic)}
+            liveLoading={classicDeal.loading}
+            liveError={live ? classic.paymentNote : classic.error}
+            onRefresh={() => void classicDeal.refresh()}
+            studioDefaults={live ? liveStudioDefaults(classic) : undefined}
+          />
         </div>
 
         <div className="section-heading" id="settlement">
@@ -271,23 +363,40 @@ function App() {
             <h2>Dual-ACK Settlement Rail</h2>
             <p>Business acceptance and RGB protocol validation are two separate events.</p>
           </div>
-          <span className="outline-tag">BACKEND REQUIRED</span>
+          <span className="outline-tag">{live ? "LIVE · CLASSIC BACKEND" : "BACKEND REQUIRED"}</span>
         </div>
 
         <section className="panel settlement-panel">
           <div className="settlement-timeline">
             <div className="rail-item"><span className="rail-node">01</span><div><strong>Proof verification</strong><small>{proofReady ? "Delivery rules passed" : "Awaiting successful verification"}</small></div><span className={proofReady ? "green" : "muted"}>{proofReady ? "VERIFIED" : "PENDING"}</span></div>
-            <div className="rail-item"><span className="rail-node">02</span><div><strong>Business ACK</strong><small>Demo-only human approval</small></div><span className={approved ? "green" : "muted"}>{approved ? "APPROVED" : "PENDING"}</span></div>
-            <div className="rail-item"><span className="rail-node">03</span><div><strong>RGB Consignment + Technical ACK</strong><small>Requires connected RGB wallet and receiver validation</small></div><span className="amber-text">NOT CONNECTED</span></div>
-            <div className="rail-item"><span className="rail-node">04</span><div><strong>Bitcoin broadcast + settlement</strong><small>Must be confirmed by the real backend</small></div><span className="muted">NOT STARTED</span></div>
+            {live ? (
+              <>
+                <div className="rail-item"><span className="rail-node">02</span><div><strong>Business ACK</strong><small>Both people approve the exact terms with their party keys in the classic dashboard</small></div><span className={liveArena?.approved ? "green" : "muted"}>{liveArena?.approved ? "APPROVED" : "PENDING"}</span></div>
+                <div className="rail-item"><span className="rail-node">03</span><div><strong>RGB Consignment + Technical ACK</strong><small>{payment ? payment.milestones.map(m => `M${m.milestoneId}: ${m.bobStatus ?? m.status.replace(/_/g, " ")}`).join(" · ") : classic.paymentNote ?? "Bob validates each transfer"}</small></div><span className={rgbStarted ? "green" : "muted"}>{rgbStarted ? "IN PROGRESS" : "NOT STARTED"}</span></div>
+                <div className="rail-item"><span className="rail-node">04</span><div><strong>Bitcoin broadcast + settlement</strong><small>{payment?.milestones.filter(m => m.txid).map(m => `M${m.milestoneId} tx ${m.txid!.slice(0, 10)}…${m.settled ? " settled" : ""}`).join(" · ") || "Settled only when both nodes report Settled"}</small></div><span className={payment?.dealSettled ? "green" : "muted"}>{payment?.dealSettled ? "SETTLED" : rgbStarted ? "PENDING" : "NOT STARTED"}</span></div>
+              </>
+            ) : (
+              <>
+                <div className="rail-item"><span className="rail-node">02</span><div><strong>Business ACK</strong><small>Demo-only human approval</small></div><span className={approved ? "green" : "muted"}>{approved ? "APPROVED" : "PENDING"}</span></div>
+                <div className="rail-item"><span className="rail-node">03</span><div><strong>RGB Consignment + Technical ACK</strong><small>Requires connected RGB wallet and receiver validation</small></div><span className="amber-text">NOT CONNECTED</span></div>
+                <div className="rail-item"><span className="rail-node">04</span><div><strong>Bitcoin broadcast + settlement</strong><small>Must be confirmed by the real backend</small></div><span className="muted">NOT STARTED</span></div>
+              </>
+            )}
           </div>
 
-          <div className="settlement-footer">
-            <div><strong>Milestone 02 · 35 DEMO</strong><small>Application-level approval does not guarantee blockchain payment.</small></div>
-            <button disabled={!canApprove} className="primary-button" onClick={() => setApproved(true)}>
-              {approved ? "Approved locally ✓" : "Approve milestone (demo)"}
-            </button>
-          </div>
+          {live ? (
+            <div className="settlement-footer">
+              <div><strong>{split ? `Milestones · ${split[0]} + ${split[1]} PDAI` : "Milestones appear after the agreement"}</strong><small>Approving and paying need the party keys, so they happen in the classic dashboard.</small></div>
+              <a className="primary-button" href="/" style={{ textDecoration: "none" }}>Open the classic dashboard ↗</a>
+            </div>
+          ) : (
+            <div className="settlement-footer">
+              <div><strong>Milestone 02 · 35 DEMO</strong><small>Application-level approval does not guarantee blockchain payment.</small></div>
+              <button disabled={!canApprove} className="primary-button" onClick={() => setApproved(true)}>
+                {approved ? "Approved locally ✓" : "Approve milestone (demo)"}
+              </button>
+            </div>
+          )}
           <p className="warning-text">No actual RGB transfer is performed by this frontend. The real backend must independently verify the proof and payment authorization.</p>
         </section>
 

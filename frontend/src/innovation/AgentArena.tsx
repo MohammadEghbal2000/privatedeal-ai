@@ -1,12 +1,27 @@
 import { useEffect, useState } from "react";
 import "./arena.css";
 
+// Live mode: the real negotiation from the classic PrivateDeal backend.
+export type LiveArena = {
+  // steps[0] is the empty start; then one step per offer, then the deal.
+  steps: { offer: number; event: string }[];
+  round: number;
+  totalRounds: number;
+  complete: boolean;
+  finished: boolean;
+  approved: boolean;
+  settled: boolean;
+  busy: boolean;
+  error: string | null;
+};
+
 type Props = {
   round: number;
   proofPassed: boolean;
   approved: boolean;
   onNext: () => void;
   onReset: () => void;
+  live?: LiveArena | null;
 };
 
 const offers = [0, 40, 120, 50, 85, 70, 70];
@@ -26,19 +41,29 @@ export default function AgentArena({
   proofPassed,
   approved,
   onNext,
-  onReset
+  onReset,
+  live = null
 }: Props) {
   const [autoPlay, setAutoPlay] = useState(false);
 
+  const complete = live ? live.complete || live.finished : round >= 6;
+  const step = live ? live.steps.length - 1 : round;
+  const busy = live?.busy ?? false;
+
   useEffect(() => {
-    if (!autoPlay || round >= 6) return;
+    if (!autoPlay || complete || busy) return;
 
     const timer = window.setTimeout(onNext, 1500);
     return () => window.clearTimeout(timer);
-  }, [autoPlay, round, onNext]);
+  }, [autoPlay, complete, busy, step, onNext]);
 
-  const complete = round >= 6;
-  const progress = (round / 6) * 100;
+  const progress = live
+    ? (complete ? 100 : (live.round / live.totalRounds) * 100)
+    : (round / 6) * 100;
+  const offerShown = live
+    ? (step === 0 ? "—" : live.steps[step]!.offer)
+    : (round === 0 ? "—" : offers[round]);
+  const eventShown = live ? live.steps[step]!.event : events[round];
 
   function reset() {
     setAutoPlay(false);
@@ -64,7 +89,7 @@ export default function AgentArena({
 
         <div className="da-status">
           <span className="da-live-dot" />
-          INTERACTIVE SIMULATION
+          {live ? "LIVE · CLASSIC BACKEND" : "INTERACTIVE SIMULATION"}
         </div>
       </div>
 
@@ -131,7 +156,7 @@ export default function AgentArena({
               className="da-flow-path"
             />
 
-            {round > 0 && (
+            {step > 0 && (
               <>
                 <circle r="5" fill="#baffdf">
                   <animateMotion
@@ -163,13 +188,13 @@ export default function AgentArena({
             <span className="da-core-icon">◇</span>
             <small>{complete ? "AGREEMENT" : "CURRENT OFFER"}</small>
             <strong>
-              {round === 0 ? "—" : offers[round]}
+              {offerShown}
             </strong>
-            <span className="da-currency">DEMO ASSET</span>
+            <span className="da-currency">{live ? "PDAI" : "DEMO ASSET"}</span>
           </div>
 
-          <span className="da-floating da-float-top">SCRIPTED · LOCAL DEMO</span>
-          <span className="da-floating da-float-bottom">RULE-BASED GUARDRAILS</span>
+          <span className="da-floating da-float-top">{live ? "LIVE · PRIVATEDEAL AGENTS" : "SCRIPTED · LOCAL DEMO"}</span>
+          <span className="da-floating da-float-bottom">{live ? "BOULWARE · AC_NEXT" : "RULE-BASED GUARDRAILS"}</span>
         </div>
 
         <div className="da-agent da-freelancer">
@@ -190,13 +215,15 @@ export default function AgentArena({
         <div className="da-event-left">
           <span className="da-event-icon">⌁</span>
           <div aria-live="polite">
-            <small>LIVE EVENT STREAM · SAMPLE DATA</small>
-            <strong>{events[round]}</strong>
+            <small>{live ? "LIVE EVENT STREAM · CLASSIC BACKEND" : "LIVE EVENT STREAM · SAMPLE DATA"}</small>
+            <strong>{eventShown}</strong>
           </div>
         </div>
 
         <span className="da-round">
-          ROUND {String(round).padStart(2, "0")} / 06
+          {live
+            ? `ROUND ${String(live.round).padStart(2, "0")} / ${String(live.totalRounds).padStart(2, "0")}`
+            : `ROUND ${String(round).padStart(2, "0")} / 06`}
         </span>
       </div>
 
@@ -215,22 +242,42 @@ export default function AgentArena({
         <button
           className="da-primary"
           onClick={onNext}
-          disabled={complete}
+          disabled={complete || busy}
         >
-          {complete ? "Agreement completed ✓" : "Execute next round ↗"}
+          {live && live.finished && !live.complete
+            ? "Rounds finished — no deal"
+            : complete ? "Agreement completed ✓" : busy ? "Negotiating…" : "Execute next round ↗"}
         </button>
 
-        <button
-          className="da-secondary"
-          onClick={play}
-          disabled={autoPlay && !complete}
-        >
-          {complete ? "↻ Replay" : autoPlay ? "Auto-playing..." : "▶ Auto-play demo"}
-        </button>
+        {live ? (
+          <>
+            <button
+              className="da-secondary"
+              onClick={() => setAutoPlay(true)}
+              disabled={complete || autoPlay}
+            >
+              {autoPlay && !complete ? "Auto-playing..." : "▶ Play all rounds"}
+            </button>
+            {/* Starting over clears the real deal, so it stays in the classic dashboard. */}
+            <button className="da-secondary" onClick={() => { window.location.href = "/"; }}>
+              New deal: classic dashboard ↗
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              className="da-secondary"
+              onClick={play}
+              disabled={autoPlay && !complete}
+            >
+              {complete ? "↻ Replay" : autoPlay ? "Auto-playing..." : "▶ Auto-play demo"}
+            </button>
 
-        <button className="da-secondary" onClick={reset}>
-          Reset
-        </button>
+            <button className="da-secondary" onClick={reset}>
+              Reset
+            </button>
+          </>
+        )}
       </div>
 
       <div className="da-pipeline">
@@ -258,23 +305,30 @@ export default function AgentArena({
           <span>03</span>
           <div>
             <strong>BUSINESS ACK</strong>
-            <small>{approved ? "Approved locally" : "Human approval"}</small>
+            <small>
+              {live
+                ? (live.approved ? "Both approved" : "Approve in the classic dashboard")
+                : (approved ? "Approved locally" : "Human approval")}
+            </small>
           </div>
         </div>
 
         <div className="da-step-arrow">→</div>
 
-        <div className="da-step">
+        <div className={`da-step ${live?.settled ? "da-complete" : ""}`}>
           <span>04</span>
           <div>
             <strong>RGB SETTLEMENT</strong>
-            <small>Backend required</small>
+            <small>{live ? (live.settled ? "Settled on both nodes" : "Paid from the classic dashboard") : "Backend required"}</small>
           </div>
         </div>
       </div>
 
+      {live?.error && <div className="da-disclaimer" role="alert">{live.error}</div>}
       <div className="da-disclaimer">
-        This is a scripted negotiation visualization, not a live QVAC or RGB connection.
+        {live
+          ? "Live: the offers come from the PrivateDeal agents on the classic backend. DealOS reads the deal and can advance rounds; approvals and payments stay in the classic dashboard."
+          : "This is a scripted negotiation visualization, not a live QVAC or RGB connection."}
       </div>
     </section>
   );

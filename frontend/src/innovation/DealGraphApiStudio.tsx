@@ -27,18 +27,22 @@ type Preview = {
   error?: string;
 };
 
+// Same origin by default: the dashboard's Vite proxy forwards /dealos to
+// the DealGraph API on 127.0.0.1:3201, which also works in Codespaces.
 const API_BASE =
   import.meta.env.VITE_DEALGRAPH_API_URL ||
-  "http://127.0.0.1:3201";
+  "/dealos";
 
-export default function DealGraphApiStudio() {
+// defaults: start from the live classic deal (DealOS live mode).
+export default function DealGraphApiStudio({ defaults }: { defaults?: Partial<FormData> } = {}) {
   const [form, setForm] = useState<FormData>({
     dealId: "demo-deal-01",
     assetId: "rgb:demo-asset",
     recipientA: "invoice-a",
     recipientB: "invoice-b",
     amountA: "40",
-    amountB: "30"
+    amountB: "30",
+    ...defaults
   });
 
   const [preview, setPreview] = useState<Preview | null>(null);

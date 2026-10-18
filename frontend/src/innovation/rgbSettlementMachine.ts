@@ -61,7 +61,7 @@ function isNodeStatus(
   ).includes(value);
 }
 
-function derivePhase(
+export function derivePhase(
   recipients: RecipientSettlement[],
   txid: string | null
 ): SettlementPhase {

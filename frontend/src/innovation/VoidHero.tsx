@@ -5,12 +5,15 @@ type Props = {
   round: number;
   proofReady: boolean;
   onNavigate: (id: string) => void;
+  // Live mode: texts from the classic deal.
+  live?: { negotiation: string; network: string } | null;
 };
 
 export default function VoidHero({
   round,
   proofReady,
-  onNavigate
+  onNavigate,
+  live = null
 }: Props) {
   return (
     <section className="void-hero">
@@ -22,7 +25,7 @@ export default function VoidHero({
 
         <span className="void-top-status">
           <span />
-          LOCAL DEMO
+          {live ? "LIVE · CLASSIC DEAL" : "LOCAL DEMO"}
         </span>
       </div>
 
@@ -86,7 +89,7 @@ export default function VoidHero({
         <div className="void-footer-item">
           <span>01 / NEGOTIATION</span>
           <strong>
-            {round >= 6 ? "DEMO AGREED" : `${round} / 6 ROUNDS`}
+            {live ? live.negotiation : round >= 6 ? "DEMO AGREED" : `${round} / 6 ROUNDS`}
           </strong>
         </div>
 
@@ -99,7 +102,7 @@ export default function VoidHero({
 
         <div className="void-footer-item">
           <span>03 / RGB NETWORK</span>
-          <strong>DEMO ONLY</strong>
+          <strong>{live ? live.network : "DEMO ONLY"}</strong>
         </div>
 
         <div className="void-footer-number">
