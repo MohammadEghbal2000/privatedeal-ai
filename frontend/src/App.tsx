@@ -7,7 +7,7 @@ import NegotiationStep from "./components/NegotiationStep";
 import SignStep, { type KeyRoles, type Keys } from "./components/SignStep";
 import PayStep from "./components/PayStep";
 import { ActivityPanel, KeysPanel, NodesPanel } from "./components/Sidebar";
-import { ErrorCallout, StepCard, explorerTx, shortId, type StepState } from "./components/ui";
+import { ConfirmDialog, ErrorCallout, StepCard, explorerTx, shortId, type StepState } from "./components/ui";
 
 type Theme = "auto" | "light" | "dark";
 
@@ -51,6 +51,9 @@ export default function App() {
   const [keyCheck, setKeyCheck] = useState(0);
   const [keyRoles, setKeyRoles] = useState<KeyRoles>({ client: null, freelancer: null });
   const [skippedQuote, setSkippedQuote] = useState(false);
+  const [confirmNew, setConfirmNew] = useState(false);
+  // Set once, from the first load: was a saved deal already in progress?
+  const [resumed, setResumed] = useState<boolean | null>(null);
   const [deal, setDeal] = useState<DealStatus | null>(null);
   const [theme, setTheme] = useState<Theme>(readTheme);
 
@@ -115,6 +118,10 @@ export default function App() {
   }
 
   const n = negotiation.data;
+
+  useEffect(() => {
+    if (n && resumed === null) setResumed(n.round > 0 || n.quote !== null);
+  }, [n, resumed]);
   // Only a verified reading (or an explicit skip) completes step 1.
   const quoteDone = !!n && (n.quote?.verified === true || n.round > 0 || skippedQuote);
   const agreed = n?.status === "agreed";
@@ -129,8 +136,9 @@ export default function App() {
     paidInFull ? "done" : "locked",
   ];
   const activeIndex = states.findIndex(s => s === "active" || s === "failed");
-  // A finished step folds away once the step after it is finished too.
-  const fold = (i: number) => states[i + 1] === "done";
+  // Finished steps stay open so the whole deal is visible from the start;
+  // each one can still be hidden by hand.
+  const fold = (_step: number) => false;
 
   const nodeList = nodes.data?.nodes ?? null;
 
@@ -156,11 +164,36 @@ export default function App() {
             );
           })}
         </div>
+        <button className="btn btn-secondary" style={{ minHeight: 36 }} onClick={() => setConfirmNew(true)}>
+          New deal
+        </button>
         <button className="icon-btn" title={`Theme: ${theme}`} aria-label={`Change theme (now ${theme})`}
           onClick={() => setTheme(t => (t === "auto" ? "dark" : t === "dark" ? "light" : "auto"))}>
           {theme === "dark" ? "🌙" : theme === "light" ? "☀️" : "🖥️"}
         </button>
       </header>
+
+      {resumed && n && (
+        <div className="callout is-info" role="status" style={{ marginTop: 12 }}>
+          <strong>Continuing a saved deal from an earlier session</strong>
+          <p>
+            It is at round {n.round} of {n.totalRounds}
+            {n.contractStatus === "approved" ? " and both people have approved it" : n.status === "agreed" ? " and waiting for approvals" : ""}.
+            Everything so far is shown below. To begin again from step 1, start a new deal.
+          </p>
+          <div className="row">
+            <button className="btn btn-primary" onClick={() => setConfirmNew(true)}>Start a new deal</button>
+            <button className="btn btn-ghost" onClick={() => setResumed(false)}>Keep this deal</button>
+          </div>
+        </div>
+      )}
+
+      <ConfirmDialog open={confirmNew} title="Start a new deal?"
+        confirmLabel="Start new deal" danger
+        onCancel={() => setConfirmNew(false)}
+        onConfirm={() => { setConfirmNew(false); setResumed(false); void resetDeal(); }}>
+        <p>The current negotiation, quote and approvals are cleared and you begin at step 1. Payments already made stay recorded on both RGB nodes.</p>
+      </ConfirmDialog>
 
       <p className="muted" style={{ marginTop: 12 }}>
         A client and a freelancer agree on a price without revealing their limits: local AI reads the quote,
