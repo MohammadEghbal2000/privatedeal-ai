@@ -28,12 +28,21 @@ export function KeysPanel(props: {
               </label>
               <input id={`key-${role}`} type="password" autoComplete="off" spellCheck={false}
                 value={keys[role]} onChange={e => onChange(role, e.target.value)}
+                onPaste={e => {
+                  // The field is masked, so a paste replaces the old key
+                  // instead of silently joining onto it.
+                  const text = e.clipboardData.getData("text");
+                  if (!text) return;
+                  e.preventDefault();
+                  onChange(role, text);
+                }}
                 placeholder={role === "client" ? "Paste the code after “Client token:”" : "Paste the code after “Freelancer token:”"} />
               {keys[role].trim() && (
                 <span aria-live="polite"
                   className={`key-status ${status === role ? "is-good" : status === "checking" ? "" : "is-bad"}`}>
                   {status === "checking" ? "Checking…"
                     : status === role ? `✓ Valid ${role} key`
+                    : status === "offline" ? "✗ Can't reach the backend — start it; this re-checks every 20 s"
                     : status ? `✗ This is the ${status} key — paste it in the other field`
                     : "✗ Not recognised — copy it again from the backend"}
                 </span>

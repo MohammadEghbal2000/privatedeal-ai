@@ -20,9 +20,17 @@ function readKeys(): Keys {
   return { client: "", freelancer: "" };
 }
 
-// People paste the whole console line: keep only the token itself.
-const normaliseKey = (value: string) =>
-  value.replace(/^\s*(client|freelancer)\s+token:\s*/i, "").trim();
+// People paste the whole console line, both lines, a line the terminal
+// wrapped, or a new key on top of an old one: keep only this role's token
+// (or else the last one pasted).
+function normaliseKey(role: Role, value: string) {
+  const compact = value.replace(/\s+/g, "");
+  const labelled = new RegExp(`${role}token:([a-f0-9]{64})`, "i").exec(compact);
+  if (labelled) return labelled[1]!;
+  const tokens = compact.match(/[a-f0-9]{64}/gi);
+  if (tokens) return tokens[tokens.length - 1]!;
+  return value.replace(/^\s*(client|freelancer)\s+token:\s*/i, "").trim();
+}
 
 function readTheme(): Theme {
   try {
@@ -88,7 +96,9 @@ export default function App() {
           const { role: found } = await api.role(token);
           setKeyRoles(r => ({ ...r, [role]: found }));
         } catch {
-          setKeyRoles(r => ({ ...r, [role]: null }));
+          // The check itself never rejects a key, so a failure means
+          // the backend can't be reached, not that the key is wrong.
+          setKeyRoles(r => ({ ...r, [role]: "offline" }));
         }
       }, 350);
     });
@@ -283,7 +293,7 @@ export default function App() {
 
         <aside className="sidebar">
           <KeysPanel keys={keys} keyRoles={keyRoles}
-            onChange={(role: Role, value) => setKeys(k => ({ ...k, [role]: normaliseKey(value) }))} />
+            onChange={(role: Role, value) => setKeys(k => ({ ...k, [role]: normaliseKey(role, value) }))} />
           <NodesPanel nodes={nodeList} error={nodes.error} />
           <ActivityPanel transfers={transfers.data?.transfers ?? null}
             unavailable={transfers.data?.unavailable ?? []} error={transfers.error} />

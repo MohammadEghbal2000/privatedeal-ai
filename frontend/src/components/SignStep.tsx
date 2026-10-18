@@ -3,7 +3,7 @@ import { api, type NegotiationState, type Role } from "../api";
 import { ConfirmDialog, CopyButton, ErrorCallout, KeyLink, Spinner, StepCard, shortId, type StepState } from "./ui";
 
 export type Keys = Record<Role, string>;
-export type KeyRoles = Record<Role, Role | null | "checking">;
+export type KeyRoles = Record<Role, Role | null | "checking" | "offline">;
 
 const PEOPLE: Record<Role, { name: string; label: string }> = {
   client: { name: "Alice", label: "Client" },
