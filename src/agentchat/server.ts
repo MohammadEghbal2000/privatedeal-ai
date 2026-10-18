@@ -35,11 +35,13 @@ import {
 const PORT = Number(process.env.AGENT_PORT ?? 3200);
 const DEFAULT_ROUNDS = 8;
 const KEEP = 10;
-const LEARNING: readonly Learning[] = ["off", "bids", "bids+messages"];
+const LEARNING: readonly Learning[] = ["off", "prior", "bids", "bids+messages"];
 
 type Entry = { id: string; createdAt: string; negotiation: Negotiation };
 
 const sessions = new Map<string, Entry>();
+// Set from the start of a negotiation until its model is unloaded, so
+// two models never run at once.
 let runningId: string | null = null;
 let comparing = false;
 
@@ -159,9 +161,20 @@ async function start(entry: Entry): Promise<void> {
     console.error("Agent negotiation failed:", error);
     n.fail(error);
   } finally {
-    runningId = null;
     await voice?.close().catch(error => console.error("Closing the model failed:", error));
+    runningId = null;
   }
+}
+
+function busy() {
+  const entry = runningId ? sessions.get(runningId) : undefined;
+  const closing = entry !== undefined && entry.negotiation.status !== "running";
+  return {
+    error: closing
+      ? "The local model from the last negotiation is still shutting down; try again in a few seconds"
+      : "A negotiation is already running; stop it first",
+    running: runningId,
+  };
 }
 
 function latest(): Entry | undefined {
@@ -181,6 +194,18 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
 
   const path = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
 
+  // People open this port in a browser by mistake: point them to the page.
+  if (req.method === "GET" && (path === "/" || path === "/agent-api" || path === "/agent-api/")) {
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+    res.end(`<!doctype html><meta charset="utf-8"><title>Agent chat API</title>
+<body style="font:16px system-ui;max-width:640px;margin:48px auto;padding:0 16px">
+<h1>Agent chat API is running</h1>
+<p>This port only serves the API. Open the page through the dashboard (Vite, port 5173):
+<a href="http://localhost:5173/#/agents">localhost:5173/#/agents</a>. In Codespaces, open port 5173 from the Ports tab and add <code>#/agents</code> to the address.</p>
+<p>Health check: <a href="/agent-api/health">/agent-api/health</a></p></body>`);
+    return;
+  }
+
   if (req.method === "GET" && path === "/agent-api/health") {
     return send(200, {
       qvac: await qvacStatus(),
@@ -196,9 +221,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     const config = parseConfig(await readJson(req, 4096));
     if (typeof config === "string") return send(400, { error: config });
 
-    if (runningId) {
-      return send(409, { error: "A negotiation is already running; stop it first", running: runningId });
-    }
+    if (runningId) return send(409, busy());
     if (config.useLlm) {
       const status = await qvacStatus();
       if (!status.available) {
@@ -206,9 +229,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       }
     }
     // Checked again: the status check above awaited.
-    if (runningId) {
-      return send(409, { error: "A negotiation is already running; stop it first", running: runningId });
-    }
+    if (runningId) return send(409, busy());
 
     const entry: Entry = {
       id: randomUUID(),

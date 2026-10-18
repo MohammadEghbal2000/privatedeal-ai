@@ -118,9 +118,10 @@ export function ComparePanel({ maxRounds }: { maxRounds: number }) {
     <section className="card" aria-labelledby="ac-compare-title">
       <h2 className="card-title" id="ac-compare-title">📊 Does opponent learning help?</h2>
       <p className="muted">
-        Runs the same random scenarios (random private weights and walk-away utilities) under four
-        learning settings, {maxRounds} turns per agent. Uses the built-in templates for speed, so it
-        measures the opponent model and strategy, not the local AI's wording.
+        Runs the same random scenarios (random private weights and walk-away utilities) under five
+        settings, {maxRounds} turns per agent. “Model that never learns” bids with a fixed uniform belief:
+        the gap between it and the learning rows is what learning adds. Uses the built-in templates for
+        speed, so it measures the opponent model and strategy, not the local AI's wording.
       </p>
       <div className="row" style={{ marginTop: 12 }}>
         <label htmlFor="ac-runs" className="muted">Scenarios</label>

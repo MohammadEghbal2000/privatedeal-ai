@@ -66,11 +66,12 @@ the client's agent can only accept or walk away. Without a deal each
 side gets its walk-away utility.
 
 **Bidding.** A time-dependent Boulware aspiration (Faratin et al., 1998):
-`τ(t) = 1 − (1 − RV) · t^(1/e)`, e = 0.5, t from 0 (first offer) to 1
-(last). An agent that learns picks, among all deals worth at least `τ(t)`
-to itself, the one its opponent model rates best for the other side. An
-agent that does not learn picks a random deal in the band
-`[τ(t), τ(t) + 0.05]`.
+`τ(t) = 1 − (1 − RV) · t^(1/e)`, e = 0.5, t from 0 (an agent's first
+offer) to 1 (its last offer; the client has one offer fewer because its
+last turn is accept-or-walk). An agent with an opponent model picks,
+among all deals worth at least `τ(t)` to itself, the one the model rates
+best for the other side. An agent without one picks a random deal in the
+band `[τ(t), τ(t) + 0.05]`.
 
 **Acceptance.** AC_next (Baarslag et al.): accept when the offer on the
 table is worth at least as much as the offer the agent would make next;
@@ -87,20 +88,30 @@ on the last turn, accept anything at or above the walk-away utility.
   with probability `exp(β · U_h(b)) / Z_h`, so offers that are good under
   hypothesis `h` raise its posterior. `Z_h` is computed exactly over all
   220 deals. β = 8.
-- **Learning from messages:** a priority cue read from a message (a
-  normalised weight vector `c` with confidence `κ`) multiplies the
-  posterior by `exp(−λ · κ · ‖h − c‖²)`. λ = 12.
+- **Learning from messages:** a statement read from a message is a
+  ranking, not magnitudes: "X matters most" and/or "we're flexible on Y",
+  with the reader's confidence κ. The stated top issue i has likelihood
+  `exp(γ·h_i) / Σ_j exp(γ·h_j)`, the stated flexible issue k
+  `exp(−γ·h_k) / Σ_j exp(−γ·h_j)`, each raised to the power κ. γ = 10. A
+  statement the opponent already made is not counted again, since
+  repeating it adds no information.
 - **Use:** the posterior-mean weights give the expected utility of any
   deal for the other side, which the bidding step maximises.
 
-β and λ were checked over a grid (β 3–20, λ 6–24, 120 scenarios each):
-welfare and Pareto rate barely move, so the results below do not hinge
-on tuning.
+β was checked over a grid (3–20): welfare and the Pareto rate barely
+move, so the results below do not hinge on tuning it.
 
-Each agent's learning is set separately: **off**, **from their offers**,
-or **from their offers and messages**. Each agent can also choose
-whether to say what matters to it; what it says is always true and never
-includes numbers beyond the offer itself.
+Each agent's opponent modelling is set separately:
+
+- **off**: no model; random offer in the aspiration band;
+- **model that never learns** (baseline): bids with the model but keeps
+  the uniform prior, which isolates what learning adds;
+- **from their offers**; **from their offers and messages**.
+
+Each agent can also choose whether to say what matters to it. It only
+states a strict top or flexible issue (with tied weights it says
+nothing), what it says is true, and it never states numbers beyond the
+offer itself.
 
 ## The local model's part
 
@@ -109,38 +120,61 @@ data (JSON-quoted), and every model output is checked before use:
 
 - **Writing.** The model gets the exact terms (and, if the agent shares
   them, its priorities in words) and writes one or two sentences. The
-  text is used only if reading it back gives exactly those terms and it
-  contains no other number, so a message can never misstate the offer or
-  leak a limit. Otherwise the template text is sent and the chat marks it.
-- **Reading.** The model returns JSON: the terms it read and how much the
-  sender says it cares about each issue, with a confidence. Bad JSON, out
-  of range values or a timeout (90 s) fall back to the keyword reader.
-  A flat reading (all issues about equal) counts as no cue.
+  text is used only if every statement of a term in it equals the offer,
+  it states all three terms, it contains no other number (digits or
+  number words), the terms are not negated or qualified ("can't do",
+  "per word"), and the priorities it states, read with the keyword rules,
+  are exactly the ones the agent chose to share (none if it shares none).
+  Otherwise the template text is sent and the chat marks it.
+- **Reading.** The model returns JSON: the terms it read, the issue the
+  sender says matters most, the one it is flexible on, and a confidence.
+  Bad JSON, unknown issue names, out-of-range values or a timeout fall
+  back to the keyword reader. The model's priority reading is used only
+  if the message actually talks about priorities and the keyword reading
+  does not contradict it.
 - **Binding terms.** The offer an agent decides is the binding one. The
   opponent model learns from that offer; the reader's version of the
   terms is recorded and shown (✓ read right / ✗ misread) as a measure of
   the model's reliability, not trusted.
 
 One model is loaded per negotiation and unloaded at the end; calls run
-one at a time.
+one at a time. The 90 s timeout starts when the model starts a call. A
+call that times out makes the rest of the calls fall back at once until
+it finishes, and the model is unloaded even if it never does. A new
+negotiation can start only once the previous model is unloaded.
 
 ## Results (template voice)
 
 `npm run eval:agents -- --runs 200 --seed 7`, 8 turns per agent, random
-weights (uniform on the simplex) and walk-away utilities in [0.2, 0.5]:
+weights (uniform on the simplex) and walk-away utilities in [0.2, 0.5].
+A side without a deal counts its walk-away utility.
 
-| Setting | Deals | Welfare | Nash product | Pareto optimal | Belief error |
-|---|---|---|---|---|---|
-| No learning | 95.5% | 1.155 | 0.058 | 29% | — |
-| Both learn from offers | 100% | 1.331 | 0.106 | 91% | 0.168 |
-| Both learn from offers + messages | 100% | 1.333 | 0.106 | 97% | 0.110 |
-| Only the client learns | 100% | 1.321 | 0.103 | 85% | 0.120 |
+| Setting | Deals | U client | U freelancer | Welfare | Nash product | Pareto optimal | Belief error |
+|---|---|---|---|---|---|---|---|
+| No opponent model | 98% | 0.575 | 0.601 | 1.176 | 0.060 | 29% | — |
+| Model that never learns (uniform belief) | 100% | 0.642 | 0.679 | 1.321 | 0.103 | 78% | — |
+| Both learn from offers | 100% | 0.648 | 0.689 | 1.337 | 0.108 | 94% | 0.164 |
+| Both learn from offers + messages | 100% | 0.649 | 0.686 | 1.336 | 0.107 | 94% | 0.119 |
+| Only the client learns | 100% | 0.605 | 0.714 | 1.319 | 0.098 | 80% | 0.112 |
+
+What this shows (seed 11 gives the same picture):
+
+- **Most of the gain comes from using a model at all.** Bidding to
+  maximise the other side's expected utility, even under a uniform
+  belief, lifts welfare from 1.18 to 1.32 and Pareto-optimal deals from
+  29% to 78%, because the sides' value functions are known to be opposed.
+- **Learning adds efficiency on top:** Pareto-optimal deals rise from 78%
+  to 94% and the distance to the frontier falls from 0.011 to 0.002.
+- **Messages make the belief more accurate** (error 0.164 → 0.119) but do
+  not improve the outcome further in this domain.
+- **Learning alone is exploitable:** when only the client learns, it
+  concedes where the freelancer gains and ends up with less than the
+  non-learning freelancer (0.605 vs 0.714).
 
 Belief error is the total variation distance between the estimated and
-the true weights (0 = exact). Learning makes deals far more efficient;
-messages mainly make the beliefs more accurate. These numbers measure
-the model and the strategy with template text; run with `--qvac` to
-measure how reliably the local model writes and reads.
+the true weights (0 = exact). These numbers measure the model and the
+strategy with template text; run with `--qvac` to measure how reliably
+the local model writes and reads.
 
 ## API (`/agent-api`, port 3200, local only)
 
@@ -151,7 +185,7 @@ measure how reliably the local model writes and reads.
 | GET | `/agent-api/sessions/:id` | Full transcript, beliefs, outcome and outcome space |
 | GET | `/agent-api/sessions/latest` | The most recent negotiation |
 | POST | `/agent-api/sessions/:id/stop` | Stop after the current message |
-| POST | `/agent-api/compare` | Batch comparison of the four learning settings (template voice) |
+| POST | `/agent-api/compare` | Batch comparison of the five settings above (template voice) |
 
 Start body:
 
@@ -189,5 +223,7 @@ requests must be `application/json`.
   that are good for it; a deceptive bidder can mislead it. Stated
   priorities are always truthful here; strategic or false statements are
   a natural next experiment.
+- Pareto optimality is measured on the 220 discrete deals.
+- `learning` in the API takes `off`, `prior`, `bids` or `bids+messages`.
 - Qwen3 0.6B on CPU takes seconds per message; a negotiation with the
   local model on takes a minute or two.

@@ -6,14 +6,19 @@
 // Two kinds of evidence update the posterior:
 // - every bid, under a Boltzmann-rational bidder: an opponent with
 //   weights h offers outcome b with probability exp(beta * U_h(b)) / Z_h;
-// - every priority cue the local LLM reads from a message ("speed matters
-//   most to us"), a noisy reading of h whose weight grows with its
-//   confidence: exp(-lambda * confidence * |h - cue|^2).
+// - every priority statement read from a message ("speed matters most to
+//   us", "we're flexible on price"). A statement carries a ranking, not
+//   magnitudes: the stated top issue i has likelihood
+//   exp(gamma * h_i) / sum_j exp(gamma * h_j), the stated flexible issue k
+//   exp(-gamma * h_k) / sum_j exp(-gamma * h_j), each tempered by the
+//   reader's confidence. A statement the opponent already made is not
+//   counted again: repeating it adds no information.
 
 import {
   ISSUES,
   OUTCOMES,
   utility,
+  type Issue,
   type Offer,
   type Role,
   type Weights,
@@ -40,13 +45,19 @@ export const HYPOTHESES: readonly Weights[] = simplexGrid();
 export type ModelOptions = {
   // How sharply a rational bidder prefers its better outcomes.
   rationality: number;
-  // How much one fully confident priority cue counts.
-  cueStrength: number;
+  // How reliably a stated ranking follows the weights.
+  cueSharpness: number;
 };
 
 export const DEFAULT_MODEL_OPTIONS: ModelOptions = {
   rationality: 8,
-  cueStrength: 12,
+  cueSharpness: 10,
+};
+
+export type Statement = {
+  top: Issue | null;
+  flexible: Issue | null;
+  confidence: number;
 };
 
 export type Belief = {
@@ -71,6 +82,7 @@ export class OpponentModel {
   private logPosterior: number[];
   private bids = 0;
   private cues = 0;
+  private readonly heard = new Set<string>();
 
   constructor(opponent: Role, options: ModelOptions = DEFAULT_MODEL_OPTIONS) {
     this.opponent = opponent;
@@ -92,17 +104,27 @@ export class OpponentModel {
     this.normalise();
   }
 
-  observeCue(cue: Weights, confidence: number): void {
-    if (!(confidence > 0)) return;
-    const strength = this.options.cueStrength * Math.min(1, confidence);
+  // Returns false when the statement is empty, unsure or already heard.
+  observeCue(statement: Statement): boolean {
+    const { top, flexible } = statement;
+    const confidence = Math.min(1, statement.confidence);
+    if (!(confidence > 0) || (!top && !flexible)) return false;
+
+    const key = `${top ?? "-"}|${flexible ?? "-"}`;
+    if (this.heard.has(key)) return false;
+    this.heard.add(key);
+
+    const gamma = this.options.cueSharpness;
     this.logPosterior = this.logPosterior.map((lp, i) => {
       const h = HYPOTHESES[i]!;
-      let d2 = 0;
-      for (const issue of ISSUES) d2 += (h[issue] - cue[issue]) ** 2;
-      return lp - strength * d2;
+      let log = 0;
+      if (top) log += gamma * h[top] - logSumExp(ISSUES.map(j => gamma * h[j]));
+      if (flexible) log += -gamma * h[flexible] - logSumExp(ISSUES.map(j => -gamma * h[j]));
+      return lp + confidence * log;
     });
     this.cues++;
     this.normalise();
+    return true;
   }
 
   belief(): Belief {

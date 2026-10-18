@@ -5,7 +5,6 @@ import {
   fixed,
   opponentOf,
   termsLabel,
-  type Issue,
   type Role,
   type Session,
   type Turn,
@@ -16,10 +15,6 @@ const PHASE_TEXT = {
   writing: "is writing…",
   reading: "is reading their message…",
 } as const;
-
-function topIssue(weights: Record<Issue, number>): Issue {
-  return (Object.keys(weights) as Issue[]).reduce((a, b) => (weights[b] > weights[a] ? b : a));
-}
 
 function writtenBy(turn: Turn): string {
   const { source, ms } = turn.written;
@@ -55,7 +50,8 @@ function Bubble({ turn, role }: { turn: Turn; role: Role }) {
             {reading.termsCorrect
               ? <span className="ac-ok">✓ terms read right</span>
               : <span className="ac-bad">✗ misread as {termsLabel(reading.terms)}</span>}
-            {reading.cue && <> · heard: <strong>{ISSUE_LABEL[topIssue(reading.cue.weights)].toLowerCase()}</strong> matters most</>}
+            {reading.cue?.top && <> · heard: <strong>{ISSUE_LABEL[reading.cue.top].toLowerCase()}</strong> matters most</>}
+            {reading.cue?.flexible && <> · flexible on <strong>{ISSUE_LABEL[reading.cue.flexible].toLowerCase()}</strong></>}
           </span>
         ) : null}
       </p>
@@ -75,9 +71,12 @@ export function ChatPane({ role, session }: { role: Role; session: Session | nul
     if (list && stick.current) list.scrollTop = list.scrollHeight;
   }, [turns.length, pending?.phase, pending?.role]);
 
-  const learning = setup?.learning === "off"
-    ? "not learning"
-    : setup?.learning === "bids" ? "learns from offers" : setup ? "learns from offers + messages" : null;
+  const learning = !setup ? null : {
+    off: "no opponent model",
+    prior: "model, never learns",
+    bids: "learns from offers",
+    "bids+messages": "learns from offers + messages",
+  }[setup.learning];
 
   return (
     <section className={`card ac-chat is-${role}`} aria-label={`${AGENT_LABEL[role]} chat`}>

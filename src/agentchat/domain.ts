@@ -144,15 +144,16 @@ export function parsePreferences(input: unknown): Preferences | string {
   return { weights: normaliseWeights(raw), reservation };
 }
 
-// The issue a side cares about most, and the one it cares about least.
-export function priorities(weights: Weights): { top: Issue; flexible: Issue } {
-  let top: Issue = ISSUES[0]!;
-  let flexible: Issue = ISSUES[0]!;
-  for (const issue of ISSUES) {
-    if (weights[issue] > weights[top]) top = issue;
-    if (weights[issue] < weights[flexible]) flexible = issue;
-  }
-  return { top, flexible };
+// The issue a side cares about strictly most, and the one it cares about
+// strictly least; null where two issues tie, so nobody claims an order
+// that does not exist.
+export function priorities(weights: Weights): { top: Issue | null; flexible: Issue | null } {
+  const sorted = [...ISSUES].sort((a, b) => weights[b] - weights[a]);
+  const [first, second, third] = sorted.map(issue => weights[issue]) as [number, number, number];
+  return {
+    top: first - second > 1e-6 ? sorted[0]! : null,
+    flexible: second - third > 1e-6 ? sorted[2]! : null,
+  };
 }
 
 // OUTCOME SPACE ANALYSIS (needs both private profiles)

@@ -14,6 +14,7 @@ import { normalised, type AgentDraft, type Draft } from "./draft";
 
 const LEARNING_LABEL: Record<Learning, string> = {
   off: "Off — no opponent model",
+  prior: "Model that never learns (baseline)",
   bids: "From their offers",
   "bids+messages": "From their offers and messages",
 };
@@ -77,7 +78,7 @@ function AgentFields(props: {
       <label className="ac-check">
         <input type="checkbox" checked={draft.sharesPriorities}
           onChange={e => onChange({ ...draft, sharesPriorities: e.target.checked })} />
-        Says what matters to it in its messages (truthfully, never its limits)
+        Says what matters to it in its messages (only true, strict priorities; never its limits)
       </label>
     </fieldset>
   );
@@ -120,8 +121,8 @@ export function SetupPanel(props: {
           Local AI (QVAC) writes and reads the messages
         </label>
         {!health.qvac.available && (
-          <span className="chip is-warning" title={health.qvac.reason ?? undefined}>
-            ⚠ Model not found — using built-in templates
+          <span className="chip is-warning">
+            ⚠ Local AI unavailable: {health.qvac.reason ?? "unknown reason"} — using built-in templates
           </span>
         )}
         <span className="spacer" />

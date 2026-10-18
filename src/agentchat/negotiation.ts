@@ -31,7 +31,9 @@ import { OpponentModel, beliefError, type Belief } from "./opponentModel.js";
 import { chooseBid, shouldAccept } from "./strategy.js";
 import type { Reading, Voice, Written } from "./voice.js";
 
-export type Learning = "off" | "bids" | "bids+messages";
+// "prior": opponent-aware bidding with a fixed uniform belief that never
+// updates. It isolates what learning adds over merely using a model.
+export type Learning = "off" | "prior" | "bids" | "bids+messages";
 
 export type AgentSetup = {
   preferences: Preferences;
@@ -48,7 +50,8 @@ export type NegotiationConfig = {
 
 export type BeliefView = Belief & {
   error: number;
-  topIssueRight: boolean;
+  // null when the opponent has no single top issue.
+  topIssueRight: boolean | null;
 };
 
 export type Turn = {
@@ -97,12 +100,15 @@ export const MIN_ROUNDS = 3;
 export const MAX_ROUNDS = 12;
 
 export function beliefView(belief: Belief, truth: Weights): BeliefView {
+  const top = priorities(truth).top;
   return {
     ...belief,
     error: beliefError(belief.weights, truth),
-    topIssueRight: priorities(belief.weights).top === priorities(truth).top,
+    topIssueRight: top === null ? null : priorities(belief.weights).top === top,
   };
 }
+
+const learns = (learning: Learning) => learning === "bids" || learning === "bids+messages";
 
 export class Negotiation {
   readonly config: NegotiationConfig;
@@ -164,7 +170,10 @@ export class Negotiation {
       const speaker: Role = j % 2 === 0 ? "freelancer" : "client";
       const listener = opponentOf(speaker);
       const ownTurn = Math.floor(j / 2);
-      const t = rounds > 1 ? ownTurn / (rounds - 1) : 1;
+      // Each side's time runs over its own bids: the client's last turn
+      // is accept-or-walk only, so it has one bid fewer.
+      const bids = speaker === "client" ? rounds - 1 : rounds;
+      const t = bids > 1 ? ownTurn / (bids - 1) : 1;
 
       this.pending = { role: speaker, phase: "deciding" };
       const plan = j === total - 1
@@ -216,10 +225,10 @@ export class Negotiation {
         turn.reading = { ...reading, termsCorrect: termsMatch(reading.terms, offer) };
 
         const model = models[listener];
-        if (model) {
+        if (model && learns(agents[listener].learning)) {
           model.observeBid(offer);
           if (agents[listener].learning === "bids+messages" && reading.cue) {
-            model.observeCue(reading.cue.weights, reading.cue.confidence);
+            model.observeCue(reading.cue);
           }
           turn.belief = beliefView(model.belief(), prefs[speaker].weights);
         }
@@ -263,7 +272,7 @@ export class Negotiation {
     const distance = agreed ? paretoDistance(utilities, this.frontier) : null;
     const errorOf = (role: Role) => {
       const model = models[role];
-      return model
+      return model && learns(this.config.agents[role].learning)
         ? beliefError(model.belief().weights, prefs[opponentOf(role)].weights)
         : null;
     };
@@ -293,7 +302,8 @@ export class Negotiation {
   }
 }
 
-export function hintFor(weights: Weights): Hint {
+// What an agent that shares its priorities says: only strict ones.
+export function hintFor(weights: Weights): Hint | null {
   const { top, flexible } = priorities(weights);
-  return { top, flexible: flexible !== top ? flexible : null };
+  return top || flexible ? { top, flexible } : null;
 }

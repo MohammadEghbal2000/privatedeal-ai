@@ -20,7 +20,8 @@ export type Setting = {
 };
 
 export const SETTINGS: readonly Setting[] = [
-  { id: "none", label: "No learning", learning: { client: "off", freelancer: "off" } },
+  { id: "none", label: "No opponent model", learning: { client: "off", freelancer: "off" } },
+  { id: "prior", label: "Model that never learns (uniform belief)", learning: { client: "prior", freelancer: "prior" } },
   { id: "bids", label: "Both learn from bids", learning: { client: "bids", freelancer: "bids" } },
   { id: "both", label: "Both learn from bids + messages", learning: { client: "bids+messages", freelancer: "bids+messages" } },
   { id: "client", label: "Only the client learns", learning: { client: "bids+messages", freelancer: "off" } },

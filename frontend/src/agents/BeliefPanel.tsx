@@ -22,6 +22,8 @@ export function BeliefPanel({ role, session }: { role: Role; session: Session })
       <h3><span className={`ac-swatch is-${role}`} aria-hidden="true" />{AGENT_LABEL[role]}: what the {other} wants</h3>
       {setup.learning === "off" ? (
         <p className="muted">Learning is off: this agent does not model the other side.</p>
+      ) : setup.learning === "prior" ? (
+        <p className="muted">Baseline: it bids with a fixed belief that every issue matters equally and never updates it.</p>
       ) : !latest ? (
         <p className="muted">Nothing read yet. It starts by assuming every issue matters equally.</p>
       ) : (
@@ -42,11 +44,13 @@ export function BeliefPanel({ role, session }: { role: Role; session: Session })
           </ul>
           <p className="muted">
             From {latest.bids} offer{latest.bids === 1 ? "" : "s"}
-            {setup.learning === "bids+messages" ? ` and ${latest.cues} stated priorit${latest.cues === 1 ? "y" : "ies"}` : ""}
+            {setup.learning === "bids+messages" ? ` and ${latest.cues} distinct stated priorit${latest.cues === 1 ? "y" : "ies"}` : ""}
             {" · "}certainty {pct(1 - latest.uncertainty)} · error {fixed(latest.error)} ·{" "}
-            {latest.topIssueRight
-              ? <span className="ac-ok">✓ knows their top issue</span>
-              : <span className="ac-bad">✗ top issue still wrong</span>}
+            {latest.topIssueRight === null
+              ? <span>they have no single top issue</span>
+              : latest.topIssueRight
+                ? <span className="ac-ok">✓ knows their top issue</span>
+                : <span className="ac-bad">✗ top issue still wrong</span>}
           </p>
         </>
       )}

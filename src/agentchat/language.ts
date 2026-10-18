@@ -6,19 +6,20 @@
 
 import {
   ISSUES,
-  normaliseWeights,
   type Issue,
   type Offer,
   type Role,
-  type Weights,
 } from "./domain.js";
 
 export type Action = "bid" | "accept" | "walk";
 
-// What a side chooses to say about itself (always true, never numbers).
-export type Hint = { top: Issue; flexible: Issue | null };
+// What a side chooses to say about itself (always true, never numbers):
+// its single most important issue and/or its single least important one.
+export type Hint = { top: Issue | null; flexible: Issue | null };
 
-export type Cue = { weights: Weights; confidence: number };
+// What a reader heard about the other side's priorities: a ranking
+// statement, not magnitudes, with how sure the reader is of it.
+export type Cue = { top: Issue | null; flexible: Issue | null; confidence: number };
 
 export function revisionsText(n: number): string {
   if (n === 0) return "no revisions";
@@ -71,8 +72,10 @@ export const FLEXIBLE_PLAIN: Record<Issue, string> = {
 const OPENERS = ["We can do", "How about", "Our proposal is", "Let's meet at", "We could offer"];
 
 export function hintText(role: Role, hint: Hint): string {
-  const top = HINT_TOP[role][hint.top];
-  return hint.flexible ? `${top} ${HINT_FLEXIBLE[hint.flexible]}` : top;
+  return [
+    hint.top ? HINT_TOP[role][hint.top] : null,
+    hint.flexible ? HINT_FLEXIBLE[hint.flexible] : null,
+  ].filter(Boolean).join(" ");
 }
 
 export function templateMessage(
@@ -95,42 +98,53 @@ export function templateMessage(
 
 // READ THE TERMS FROM ANY MESSAGE
 const NUMBER_WORDS: Record<string, number> = {
-  no: 0, zero: 0, a: 1, an: 1, one: 1, single: 1, two: 2, three: 3,
+  no: 0, zero: 0, without: 0, a: 1, an: 1, one: 1, single: 1, two: 2, three: 3,
   four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
   eleven: 11, twelve: 12, thirteen: 13, fourteen: 14,
 };
 
 function toNumber(token: string | undefined): number | null {
   if (token === undefined) return null;
-  const t = token.toLowerCase().trim();
+  const t = token.toLowerCase().replace(/^a\s+single$/, "single").replace(/^without(\s+any)?$/, "without").trim();
   if (/^\d+(?:\.\d+)?$/.test(t)) return Number(t);
   return NUMBER_WORDS[t] ?? null;
 }
 
 const WORD = "\\b(\\d+(?:\\.\\d+)?|no|zero|a|an|one|a single|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen)";
 
+type Mention = { issue: Issue; value: number; start: number; end: number };
+
+const PATTERNS: { issue: Issue; re: RegExp; scale?: number }[] = [
+  { issue: "price", re: /\b(\d+(?:\.\d+)?)\s*(?:PDAI|USD|dollars?)\b|\$\s*(\d+(?:\.\d+)?)/gi },
+  { issue: "deadline", re: new RegExp(`${WORD}[\\s-]*(?:working\\s+|business\\s+|calendar\\s+)?days?\\b`, "gi") },
+  { issue: "deadline", re: new RegExp(`${WORD}[\\s-]*weeks?\\b`, "gi"), scale: 7 },
+  {
+    issue: "revisions",
+    re: new RegExp(`${WORD}\\s+(?:free\\s+|extra\\s+|more\\s+)?(?:rounds?\\s+of\\s+)?revisions?\\b|revisions?\\s*[:=]\\s*(\\d+)|\\b(without(?:\\s+any)?)\\s+revisions?\\b`, "gi"),
+  },
+];
+
+// Every statement of a term in the text, in order.
+function mentions(text: string): Mention[] {
+  const found: Mention[] = [];
+  for (const { issue, re, scale = 1 } of PATTERNS) {
+    for (const m of text.matchAll(re)) {
+      const token = m.slice(1).find(g => g !== undefined);
+      const value = toNumber(token);
+      if (value !== null) {
+        found.push({ issue, value: value * scale, start: m.index!, end: m.index! + m[0].length });
+      }
+    }
+  }
+  return found.sort((a, b) => a.start - b.start);
+}
+
+// The first statement of each term.
 export function readTerms(text: string): Partial<Offer> {
   const terms: Partial<Offer> = {};
-
-  const price =
-    text.match(/(\d+(?:\.\d+)?)\s*(?:PDAI|USD|dollars?)\b/i) ??
-    text.match(/\$\s*(\d+(?:\.\d+)?)/);
-  const p = toNumber(price?.[1]);
-  if (p !== null) terms.price = p;
-
-  const days = text.match(new RegExp(`${WORD}[\\s-]*(?:working\\s+|business\\s+)?days?\\b`, "i"));
-  const weeks = text.match(new RegExp(`${WORD}[\\s-]*weeks?\\b`, "i"));
-  const d = toNumber(days?.[1]?.replace(/^a single$/i, "single"));
-  const w = toNumber(weeks?.[1]?.replace(/^a single$/i, "single"));
-  if (d !== null) terms.deadline = d;
-  else if (w !== null) terms.deadline = w * 7;
-
-  const revisions =
-    text.match(new RegExp(`${WORD}\\s+(?:rounds?\\s+of\\s+)?revisions?\\b`, "i")) ??
-    text.match(/revisions?\s*[:=]\s*(\d+)/i);
-  const r = toNumber(revisions?.[1]?.replace(/^a single$/i, "single"));
-  if (r !== null) terms.revisions = r;
-
+  for (const m of mentions(text)) {
+    if (terms[m.issue] === undefined) terms[m.issue] = m.value;
+  }
   return terms;
 }
 
@@ -138,15 +152,50 @@ export function termsMatch(read: Partial<Offer>, offer: Offer): boolean {
   return ISSUES.every(issue => read[issue] === offer[issue]);
 }
 
-// A written message is usable only if it states exactly these terms and
-// no other number (so it cannot leak a limit).
-export function checkWritten(text: string, offer: Offer): string | null {
+const SENTENCES = /(?<=[.!?;])\s+/;
+const NEGATION = /\b(not|never|cannot|no longer|instead of|rather than|except|unless)\b|n't\b/i;
+const PER_UNIT = /\b(?:per|each)\s+(?:word|words|hour|page|day|revision|round)\b|\ban?\s+(?:word|hour|page)\b|\/\s*(?:word|hour|page)\b/i;
+const OTHER_NUMBER = /\d|\b(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|dozen|half)\b/i;
+
+// A written message is usable only if every term it states equals the
+// offer, it states each term, it names no other number (so it cannot leak
+// a limit), it does not negate or qualify the terms ("per word", "can't
+// do"), and any priorities it states are exactly the ones the agent chose
+// to share.
+export function checkWritten(text: string, offer: Offer, hint: Hint | null): string | null {
   if (!text) return "empty message";
   if (text.length > 400) return "message too long";
-  if (!termsMatch(readTerms(text), offer)) return "terms in the text differ from the offer";
-  const allowed = new Set([offer.price, offer.deadline, offer.revisions].map(String));
-  const numbers = text.match(/\d+(?:\.\d+)?/g) ?? [];
-  if (numbers.some(n => !allowed.has(n))) return "message mentions another number";
+
+  const found = mentions(text);
+  if (found.some(m => m.value !== offer[m.issue]) || !ISSUES.every(issue => found.some(m => m.issue === issue))) {
+    return "terms in the text differ from the offer";
+  }
+  if (PER_UNIT.test(text)) return "terms are qualified (per word, per hour, …)";
+
+  let rest = "";
+  let last = 0;
+  for (const m of found) {
+    if (m.start < last) continue;
+    rest += text.slice(last, m.start) + " ";
+    last = m.end;
+  }
+  rest += text.slice(last);
+  if (OTHER_NUMBER.test(rest)) return "message mentions another number";
+
+  for (const sentence of text.split(SENTENCES)) {
+    if (mentions(sentence).length && NEGATION.test(sentence)) return "terms are negated or hedged";
+  }
+
+  const stated = keywordCue(text);
+  if (!hint) {
+    if (mentionsPriorities(text)) return "states priorities the agent did not share";
+  } else if (
+    !stated ||
+    stated.top !== hint.top ||
+    stated.flexible !== hint.flexible
+  ) {
+    return "stated priorities differ from the agent's";
+  }
   return null;
 }
 
@@ -158,31 +207,40 @@ const ISSUE_WORDS: Record<Issue, RegExp> = {
 };
 
 const TOP_WORDS = /\b(matters? most|most important|main (?:constraint|priority|concern)|top priority|care most|key (?:for|to) (?:us|me)|really need|priority)\b/i;
-const FLEXIBLE_WORDS = /\b(flexible|don't mind|do not mind|less important|open on|easy on|not fussed)\b/i;
+const FLEXIBLE_WORDS = /\b(flexible|less important|open on|easy on|not fussed|(?:don't|do not) mind)\b/i;
+// Idioms that mean "flexible" despite a negation word.
+const FLEXIBLE_IDIOMS = /\b(?:not fussed|(?:don't|do not) mind)\b/gi;
 
-function issuesIn(sentence: string): Issue[] {
-  return ISSUES.filter(issue => ISSUE_WORDS[issue].test(sentence));
+function clauses(text: string): string[] {
+  return text
+    .split(/(?<=[.!?;])\s+|,\s+|\s+(?:and|but|while|though|although)\s+/i)
+    .map(c => c.replace(FLEXIBLE_IDIOMS, "flexible"));
 }
 
+function issuesIn(clause: string): Issue[] {
+  return ISSUES.filter(issue => ISSUE_WORDS[issue].test(clause));
+}
+
+export function mentionsPriorities(text: string): boolean {
+  return clauses(text).some(c => TOP_WORDS.test(c) || FLEXIBLE_WORDS.test(c));
+}
+
+// Clause by clause: a clause naming one issue with "matters most"-type
+// words makes it the top issue, with "flexible"-type words the least
+// important one. Negated clauses are skipped rather than guessed.
 export function keywordCue(text: string): Cue | null {
   let top: Issue | null = null;
   let flexible: Issue | null = null;
 
-  for (const sentence of text.split(/(?<=[.!?])\s+/)) {
-    const named = issuesIn(sentence);
+  for (const clause of clauses(text)) {
+    if (NEGATION.test(clause)) continue;
+    const named = issuesIn(clause);
     if (named.length !== 1) continue;
-    if (!top && TOP_WORDS.test(sentence)) top = named[0]!;
-    else if (!flexible && FLEXIBLE_WORDS.test(sentence)) flexible = named[0]!;
+    if (!top && TOP_WORDS.test(clause)) top = named[0]!;
+    else if (!flexible && FLEXIBLE_WORDS.test(clause)) flexible = named[0]!;
   }
 
+  if (flexible === top) flexible = null;
   if (!top && !flexible) return null;
-
-  const raw: Weights = { price: 1, deadline: 1, revisions: 1 };
-  if (top) raw[top] = 3;
-  if (flexible && flexible !== top) raw[flexible] = 0.5;
-
-  return {
-    weights: normaliseWeights(raw),
-    confidence: top && flexible ? 0.7 : 0.5,
-  };
+  return { top, flexible, confidence: top && flexible ? 0.7 : 0.5 };
 }

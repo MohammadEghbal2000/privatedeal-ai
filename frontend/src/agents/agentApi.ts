@@ -4,7 +4,7 @@ export type Role = "client" | "freelancer";
 export type Issue = "price" | "deadline" | "revisions";
 export type Weights = Record<Issue, number>;
 export type Offer = { price: number; deadline: number; revisions: number };
-export type Learning = "off" | "bids" | "bids+messages";
+export type Learning = "off" | "prior" | "bids" | "bids+messages";
 
 export const ISSUES: readonly Issue[] = ["price", "deadline", "revisions"];
 export const ROLES: readonly Role[] = ["client", "freelancer"];
@@ -33,7 +33,7 @@ export type Health = {
   running: string | null;
 };
 
-export type Cue = { weights: Weights; confidence: number };
+export type Cue = { top: Issue | null; flexible: Issue | null; confidence: number };
 
 export type Turn = {
   index: number;
@@ -58,7 +58,7 @@ export type Turn = {
     bids: number;
     cues: number;
     error: number;
-    topIssueRight: boolean;
+    topIssueRight: boolean | null;
   } | null;
 };
 
